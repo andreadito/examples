@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import React, { type CSSProperties } from 'react';
 import type { EmailTableProps } from '../types';
 import { resolveColumns } from './columnResolver';
 import { resolveCellContent, resolveCellStyle, getRawValue } from './valueResolver';
