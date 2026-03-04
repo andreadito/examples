@@ -1,7 +1,13 @@
 import { createServer, type IncomingMessage } from 'node:http';
 import { composeEmail } from '../src/engine/composeEmail.ts';
+import { resolveDataSources } from '../src/engine/dataResolver.ts';
 import { initRenderer, destroyRenderer } from '../../email-chart/server/chartRenderer.ts';
 import { dailyReportBlocks, dailyReportTemplate } from '../src/demo/DailyTradingReport.ts';
+import type { EmailBlock } from '../src/types/index.ts';
+import { attachWebSocketServer } from './wsServer.ts';
+import { generateTrades, generatePnlTimeseries, generatePositions, generateCompliance, generateUnreliable } from './demoData.ts';
+import { handlePipelineStart, handlePipelineEvents, handleGlobalEvents, handleJobList } from './pipeline.ts';
+import { buildMonitorPage } from './monitorPage.ts';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -129,11 +135,125 @@ async function main() {
 
   const server = createServer(async (req, res) => {
     try {
-      // POST /api/compose — compose email from blocks
+      // ── Demo data endpoints ─────────────────────────────────────────────
+
+      if (req.url === '/api/demo/trades' && req.method === 'GET') {
+        const data = await generateTrades();
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(JSON.stringify(data));
+        return;
+      }
+
+      if (req.url === '/api/demo/pnl' && req.method === 'GET') {
+        const data = await generatePnlTimeseries();
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(JSON.stringify(data));
+        return;
+      }
+
+      if (req.url === '/api/demo/positions' && req.method === 'GET') {
+        const data = await generatePositions();
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(JSON.stringify(data));
+        return;
+      }
+
+      if (req.url === '/api/demo/compliance' && req.method === 'GET') {
+        const data = await generateCompliance();
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(JSON.stringify(data));
+        return;
+      }
+
+      if (req.url === '/api/demo/unreliable' && req.method === 'GET') {
+        try {
+          const data = await generateUnreliable();
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          });
+          res.end(JSON.stringify(data));
+        } catch (err) {
+          res.writeHead(500, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          });
+          res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+        }
+        return;
+      }
+
+      // ── Pipeline endpoints ──────────────────────────────────────────────
+
+      if (req.url === '/api/pipeline' && req.method === 'POST') {
+        await handlePipelineStart(req, res);
+        return;
+      }
+
+      // Static routes MUST come before the parameterized regex
+      if (req.url === '/api/pipeline/jobs' && req.method === 'GET') {
+        handleJobList(req, res);
+        return;
+      }
+
+      if (req.url === '/api/pipeline/events' && req.method === 'GET') {
+        handleGlobalEvents(req, res);
+        return;
+      }
+
+      const pipelineEventsMatch = req.url?.match(
+        /^\/api\/pipeline\/([a-zA-Z0-9-]+)\/events$/,
+      );
+      if (pipelineEventsMatch && req.method === 'GET') {
+        handlePipelineEvents(req, res, pipelineEventsMatch[1]);
+        return;
+      }
+
+      // ── Existing endpoints ──────────────────────────────────────────────
+
+      // POST /api/resolve — resolve data sources only (convenience endpoint)
+      if (req.url === '/api/resolve' && req.method === 'POST') {
+        const body = await readBody(req);
+        const { blocks } = JSON.parse(body) as { blocks: EmailBlock[] };
+        const result = await resolveDataSources(blocks);
+
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      // POST /api/compose — compose email from blocks (auto-resolves data sources)
       if (req.url === '/api/compose' && req.method === 'POST') {
         const body = await readBody(req);
-        const { blocks, template } = JSON.parse(body);
-        const result = await composeEmail(blocks, template);
+        const { blocks, template } = JSON.parse(body) as {
+          blocks: EmailBlock[];
+          template?: Record<string, unknown>;
+        };
+
+        // Auto-resolve data sources if any blocks have them
+        const hasDataSources = blocks.some(
+          (b) => 'dataSource' in b && b.dataSource,
+        );
+        const resolvedBlocks = hasDataSources
+          ? (await resolveDataSources(blocks)).resolvedBlocks
+          : blocks;
+
+        const result = await composeEmail(resolvedBlocks, template);
 
         res.writeHead(200, {
           'Content-Type': 'application/json',
@@ -147,10 +267,17 @@ async function main() {
       if (req.method === 'OPTIONS') {
         res.writeHead(204, {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type',
         });
         res.end();
+        return;
+      }
+
+      // GET /monitor — pipeline monitoring dashboard
+      if (req.url === '/monitor' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(buildMonitorPage());
         return;
       }
 
@@ -165,8 +292,12 @@ async function main() {
     }
   });
 
+  // Attach WebSocket demo server to the same HTTP server
+  attachWebSocketServer(server);
+
   server.listen(PORT, () => {
     console.log(`Email composer server at http://localhost:${PORT}`);
+    console.log(`Pipeline monitor at http://localhost:${PORT}/monitor`);
   });
 
   // Graceful shutdown

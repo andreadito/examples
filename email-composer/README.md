@@ -5,7 +5,7 @@ Compose ag-Grid tables and ag-Charts visualizations into a single, email-safe HT
 - **email-table** — converts ag-Grid `ColDef[]` + row data into an inline-styled HTML `<table>`
 - **email-chart** — converts ag-Charts `AgChartOptions` into a PNG image via Puppeteer
 
-Email Composer orchestrates both engines through a **block renderer registry**, producing a complete HTML email with header, content blocks, and footer — ready to send via any email API.
+Email Composer orchestrates both engines through a **block renderer registry**, with built-in **data source resolution** (HTTP + WebSocket), a **pipeline monitoring dashboard**, and a complete HTTP/WebSocket server — producing email HTML ready to send via any email API.
 
 ---
 
@@ -21,9 +21,11 @@ cd ../email-chart && npm install
 cd ../email-composer
 npm run server
 # => Email composer server at http://localhost:3003
+# => Pipeline monitor at http://localhost:3003/monitor
 
 # 3. Open http://localhost:3003 to see the demo email
-# 4. Or start the Vite dev UI:
+# 4. Open http://localhost:3003/monitor to see the pipeline monitor
+# 5. Or start the Vite dev UI:
 npm run dev
 # => http://localhost:5178
 ```
@@ -32,63 +34,54 @@ npm run dev
 
 ## How It Works
 
-### The Composition Pipeline
+### The Full Pipeline
 
 ```
-                                    ┌──────────────┐
-                                    │  EmailBlock[] │
-                                    └──────┬───────┘
-                                           │
-                                    ┌──────▼───────┐
-                                    │ composeEmail()│
-                                    └──────┬───────┘
-                                           │
-                          ┌────────────────┼────────────────┐
-                          │                │                │
-                    ┌─────▼─────┐   ┌──────▼──────┐  ┌─────▼─────┐
-                    │   table   │   │    chart    │  │text/divider│
-                    │ renderer  │   │  renderer   │  │  renderer  │
-                    └─────┬─────┘   └──────┬──────┘  └─────┬─────┘
-                          │                │                │
-                   renderToHtml()   Puppeteer +        pass-through
-                   (sync, ~4ms)     ag-Charts SSR       (sync, ~1ms)
-                          │         (async, ~500ms)         │
-                          │                │                │
-                    ┌─────▼─────┐   ┌──────▼──────┐  ┌─────▼─────┐
-                    │ HTML table│   │  <img> PNG   │  │  HTML div  │
-                    │  string   │   │  data URL    │  │  string    │
-                    └─────┬─────┘   └──────┬──────┘  └─────┬─────┘
-                          │                │                │
-                          └────────────────┼────────────────┘
-                                           │
-                                    ┌──────▼───────┐
-                                    │ wrapEmailHtml │
-                                    │  (template)   │
-                                    └──────┬───────┘
-                                           │
-                                    ┌──────▼───────┐
-                                    │  Complete     │
-                                    │  email HTML   │
-                                    └──────────────┘
+                              ┌──────────────┐
+                              │  EmailBlock[] │   Blocks may include dataSource
+                              └──────┬───────┘   declarations (HTTP/WebSocket)
+                                     │
+                           ┌─────────▼──────────┐
+                           │ resolveDataSources()│   Phase 1: Fetch data
+                           │  (parallel fetch)   │   from remote sources
+                           └─────────┬──────────┘
+                                     │
+                              ┌──────▼───────┐
+                              │  Resolved     │   Blocks now have inline data
+                              │  EmailBlock[] │   (rowData, chartOptions.data)
+                              └──────┬───────┘
+                                     │
+                              ┌──────▼───────┐
+                              │ composeEmail()│   Phase 2: Render blocks
+                              └──────┬───────┘
+                                     │
+                    ┌────────────────┼────────────────┐
+                    │                │                │
+              ┌─────▼─────┐   ┌──────▼──────┐  ┌─────▼─────┐
+              │   table   │   │    chart    │  │text/divider│
+              │ renderer  │   │  renderer   │  │  renderer  │
+              └─────┬─────┘   └──────┬──────┘  └─────┬─────┘
+                    │                │                │
+             renderToHtml()   Puppeteer +        pass-through
+             (sync, ~4ms)     ag-Charts SSR       (sync, ~1ms)
+                    │         (async, ~500ms)         │
+                    └────────────────┼────────────────┘
+                                     │
+                              ┌──────▼───────┐
+                              │ wrapEmailHtml │   Phase 3: Assembly
+                              │  (template)   │
+                              └──────┬───────┘
+                                     │
+                              ┌──────▼───────┐
+                              │  Complete     │
+                              │  email HTML   │
+                              └──────────────┘
 ```
 
-1. You provide an array of `EmailBlock` objects (tables, charts, text, dividers)
-2. `composeEmail()` looks up each block's renderer from the registry
-3. All blocks render concurrently — charts via `Promise.all`, sync blocks resolve instantly
-4. Rendered HTML fragments are assembled in original order
-5. The result is wrapped in an email-safe HTML template (table-based layout, inline styles)
-
-### Why Puppeteer for Charts?
-
-ag-Charts is canvas-based and cannot render in Node.js directly. The chart renderer:
-
-1. Launches a persistent headless Chrome browser (reused across renders)
-2. Creates a page, loads the ag-Charts UMD bundle from disk
-3. Injects chart options, calls `AgCharts.create()` with animations disabled
-4. Calls `chart.getImageDataURL()` to extract the rendered canvas as a PNG
-5. Returns the base64 data URL for embedding as `<img src="data:image/png;base64,...">`
-
-This gives pixel-identical output to what you'd see in a browser — all chart types, themes, and features work automatically.
+1. You provide an array of `EmailBlock` objects — blocks can include inline data or `dataSource` declarations
+2. `resolveDataSources()` fetches data from HTTP/WebSocket sources in parallel, injecting results into blocks
+3. `composeEmail()` looks up each block's renderer and renders all blocks concurrently
+4. Rendered HTML fragments are assembled in original order and wrapped in an email-safe template
 
 ---
 
@@ -99,13 +92,18 @@ This gives pixel-identical output to what you'd see in a browser — all chart t
 ```
 email-composer/
 ├── server/
-│   └── index.ts                  # HTTP server (port 3003)
+│   ├── index.ts                  # HTTP + WebSocket server (port 3003)
+│   ├── demoData.ts               # Mock data generators for demos
+│   ├── wsServer.ts               # WebSocket demo server
+│   ├── pipeline.ts               # Pipeline orchestrator (job management + SSE)
+│   └── monitorPage.ts            # Pipeline monitoring dashboard HTML
 ├── src/
 │   ├── types/
-│   │   └── index.ts              # EmailBlock, EmailTemplateConfig, BlockRenderer
+│   │   └── index.ts              # All type definitions
 │   ├── engine/
 │   │   ├── index.ts              # Public barrel exports
-│   │   ├── composeEmail.ts       # Core orchestrator
+│   │   ├── composeEmail.ts       # Core composition orchestrator
+│   │   ├── dataResolver.ts       # Data source resolution service
 │   │   ├── htmlWrapper.ts        # Email-safe HTML template
 │   │   ├── registry.ts           # Block renderer registry
 │   │   └── renderers/
@@ -114,7 +112,7 @@ email-composer/
 │   │       ├── textRenderer.ts   # Raw HTML passthrough
 │   │       └── dividerRenderer.ts# <hr> separator
 │   ├── demo/
-│   │   └── DailyTradingReport.ts # Example: 6-block trading report
+│   │   └── DailyTradingReport.ts # Demo block configurations
 │   ├── App.tsx                   # Vite demo UI
 │   ├── theme.ts                  # MUI dark theme
 │   └── main.tsx                  # React entry
@@ -140,9 +138,9 @@ All imports use relative paths — no npm linking or workspaces required. The pr
 
 ## API Reference
 
-### `composeEmail(blocks, template?)`
+### `composeEmail(blocks, template?, onProgress?)`
 
-The main function. Takes an array of blocks and an optional template config, returns complete email HTML.
+The main composition function. Takes blocks, renders them, and returns complete email HTML.
 
 ```typescript
 import { composeEmail } from './engine';
@@ -150,24 +148,6 @@ import { composeEmail } from './engine';
 const result = await composeEmail(
   [
     { type: 'text', html: '<h2>Hello</h2><p>Here is your report.</p>' },
-    {
-      type: 'chart',
-      title: 'Revenue Trend',
-      chartOptions: {
-        series: [{ type: 'line', xKey: 'month', yKey: 'revenue' }],
-        axes: [
-          { type: 'category', position: 'bottom' },
-          { type: 'number', position: 'left' },
-        ],
-        data: [
-          { month: 'Jan', revenue: 100 },
-          { month: 'Feb', revenue: 120 },
-          { month: 'Mar', revenue: 145 },
-        ],
-      },
-      width: 600,
-      height: 300,
-    },
     {
       type: 'table',
       title: 'Details',
@@ -195,6 +175,31 @@ console.log(result.renderTimeMs);  // Total render time (ms)
 console.log(result.blockResults);  // Per-block timing
 ```
 
+The optional `onProgress` callback receives `PipelineEvent` objects as each block finishes rendering — used by the pipeline monitor for real-time status.
+
+### `resolveDataSources(blocks, onProgress?)`
+
+Resolves all data sources in blocks in parallel. Blocks without a `dataSource` pass through unchanged.
+
+```typescript
+import { resolveDataSources } from './engine';
+
+const blocks = [
+  {
+    type: 'table',
+    colDefs: [{ field: 'name' }, { field: 'price' }],
+    dataSource: {
+      kind: 'fetch',
+      url: 'https://api.example.com/trades',
+      transform: 'result.trades',    // dot-path to extract nested data
+    },
+  },
+];
+
+const result = await resolveDataSources(blocks);
+// result.resolvedBlocks[0].rowData → [...fetched trade data]
+```
+
 ### Block Types
 
 #### `TableBlock`
@@ -204,15 +209,12 @@ Renders an ag-Grid-style table using `renderToHtml()` from email-table.
 ```typescript
 {
   type: 'table';
-  rowData: Record<string, unknown>[];     // Array of row objects
-  colDefs: Record<string, unknown>[];     // ag-Grid ColDef array
-  title?: string;                         // Optional heading above the table
+  colDefs: Record<string, unknown>[];      // ag-Grid ColDef array
+  rowData?: Record<string, unknown>[];     // Inline row data (optional if dataSource provided)
+  title?: string;                          // Optional heading above the table
+  dataSource?: DataSource;                 // Remote data source (replaces rowData)
 }
 ```
-
-The `colDefs` follow the ag-Grid `ColDef` interface: `field`, `headerName`, `width`, `type`, `valueFormatter`, `valueGetter`, `cellStyle`, `cellRenderer`, column groups via `children`, etc.
-
-> **Note:** When sending blocks via the HTTP API (JSON), function-based ColDef properties (`valueFormatter`, `cellRenderer`, etc.) cannot be serialized. Use them only when calling `composeEmail()` directly in Node.js.
 
 #### `ChartBlock`
 
@@ -221,16 +223,13 @@ Renders an ag-Charts visualization as a PNG image via Puppeteer.
 ```typescript
 {
   type: 'chart';
-  chartOptions: Record<string, unknown>;  // ag-Charts AgChartOptions (JSON-serializable)
-  width?: number;                         // Image width in pixels (default: 800)
-  height?: number;                        // Image height in pixels (default: 400)
-  title?: string;                         // Optional heading above the chart
+  chartOptions: Record<string, unknown>;   // ag-Charts options (series, axes, etc.)
+  width?: number;                          // Image width in pixels (default: 800)
+  height?: number;                         // Image height in pixels (default: 400)
+  title?: string;                          // Optional heading above the chart
+  dataSource?: DataSource;                 // Remote data source (replaces chartOptions.data)
 }
 ```
-
-The `chartOptions` object is the standard ag-Charts configuration. Include `data` inside the options object (not separately). All community chart types work: line, bar, area, pie, donut, bubble, scatter, histogram, etc.
-
-> **Limitation:** ag-Charts Enterprise types (candlestick, OHLC, treemap, box-plot, etc.) require an Enterprise license. Function-based options (formatters, stylers) don't survive JSON serialization.
 
 #### `TextBlock`
 
@@ -254,6 +253,47 @@ Renders a horizontal rule separator.
 }
 ```
 
+### Data Sources
+
+Blocks can declare a `dataSource` to fetch data from a remote endpoint instead of providing inline data. Two kinds are supported:
+
+#### `FetchDataSource` — HTTP
+
+```typescript
+{
+  kind: 'fetch';
+  url: string;               // HTTP URL
+  options?: RequestInit;      // Fetch options (headers, method, body, etc.)
+  transform?: string;         // Dot-path to extract data, e.g. "result.rows"
+}
+```
+
+#### `WebSocketDataSource` — WebSocket
+
+Opens a connection, sends a message, waits for one response, then closes.
+
+```typescript
+{
+  kind: 'websocket';
+  url: string;               // WebSocket URL (ws:// or wss://)
+  message: unknown;          // JSON-serializable message to send
+  transform?: string;         // Dot-path to extract data from response
+  timeoutMs?: number;         // Timeout in ms (default: 10000)
+}
+```
+
+#### How Data Injection Works
+
+The resolver injects fetched data into the appropriate field based on block type:
+
+| Block Type | Data injected into |
+|------------|--------------------|
+| `table` | `rowData` |
+| `chart` | `chartOptions.data` |
+| other | `data` property |
+
+The `transform` field uses dot-path notation to extract nested data from the response. For example, if the API returns `{ result: { trades: [...] } }`, set `transform: 'result.trades'` to extract just the array.
+
 ### `EmailTemplateConfig`
 
 All fields are optional. Defaults are applied automatically.
@@ -272,7 +312,9 @@ All fields are optional. Defaults are applied automatically.
 | `contentBgColor` | `'#ffffff'` | Content area background color |
 | `accentColor` | `'#2563eb'` | Accent color (dividers, highlights) |
 
-### `ComposeResult`
+### Result Types
+
+#### `ComposeResult`
 
 ```typescript
 {
@@ -286,76 +328,197 @@ All fields are optional. Defaults are applied automatically.
 }
 ```
 
+#### `ResolveResult`
+
+```typescript
+{
+  resolvedBlocks: EmailBlock[];  // Blocks with data injected
+  resolveTimeMs: number;         // Total resolution time
+  blockResults: Array<{
+    index: number;
+    type: string;
+    hadDataSource: boolean;      // Whether this block had a dataSource
+    resolveTimeMs: number;       // Time to resolve this block
+    error?: string;              // Error message if resolution failed
+  }>;
+}
+```
+
 ---
 
 ## HTTP Server
 
-The server exposes two endpoints on port 3003:
+The server runs on port 3003 and provides the following endpoints:
 
-### `GET /`
+### Pages
 
-Returns a demo page showing the Daily Trading Report email rendered inline, with block timing breakdown.
+| Route | Description |
+|-------|-------------|
+| `GET /` | Demo page showing the Daily Trading Report email with timing breakdown |
+| `GET /monitor` | Pipeline monitoring dashboard with real-time status |
 
-### `POST /api/compose`
+### Composition Endpoints
 
-Compose an email from a JSON payload.
+#### `POST /api/compose`
 
-**Request:**
-
-```json
-{
-  "blocks": [
-    { "type": "text", "html": "<h2>Summary</h2><p>Markets up today.</p>" },
-    {
-      "type": "chart",
-      "title": "P&L",
-      "chartOptions": {
-        "series": [{ "type": "line", "xKey": "x", "yKey": "y" }],
-        "data": [{ "x": "A", "y": 10 }, { "x": "B", "y": 20 }]
-      },
-      "width": 600,
-      "height": 300
-    },
-    {
-      "type": "table",
-      "colDefs": [{ "field": "name" }, { "field": "value" }],
-      "rowData": [{ "name": "Alpha", "value": 100 }]
-    }
-  ],
-  "template": {
-    "title": "My Report",
-    "headerBgColor": "#1a1a2e"
-  }
-}
-```
-
-**Response:**
-
-```json
-{
-  "html": "<!DOCTYPE html>...",
-  "renderTimeMs": 623,
-  "blockResults": [
-    { "type": "text", "index": 0, "renderTimeMs": 1 },
-    { "type": "chart", "index": 1, "renderTimeMs": 618 },
-    { "type": "table", "index": 2, "renderTimeMs": 3 }
-  ]
-}
-```
-
-**cURL example:**
+Compose an email from blocks. Auto-resolves data sources if any blocks have them.
 
 ```bash
 curl -X POST http://localhost:3003/api/compose \
   -H 'Content-Type: application/json' \
   -d '{
     "blocks": [
-      { "type": "text", "html": "<h2>Hello World</h2>" },
-      { "type": "divider" }
+      { "type": "text", "html": "<h2>Hello</h2>" },
+      {
+        "type": "table",
+        "colDefs": [{ "field": "name" }, { "field": "value" }],
+        "dataSource": {
+          "kind": "fetch",
+          "url": "http://localhost:3003/api/demo/trades",
+          "transform": "result.trades"
+        }
+      }
     ],
-    "template": { "title": "Test Email" }
+    "template": { "title": "My Report" }
   }'
 ```
+
+**Response:** `ComposeResult` (html + timing)
+
+#### `POST /api/resolve`
+
+Resolve data sources only (no rendering). Returns blocks with fetched data injected.
+
+```bash
+curl -X POST http://localhost:3003/api/resolve \
+  -H 'Content-Type: application/json' \
+  -d '{ "blocks": [{ "type": "table", "colDefs": [...], "dataSource": { ... } }] }'
+```
+
+**Response:** `ResolveResult` (resolved blocks + timing)
+
+### Pipeline Endpoints (for monitoring)
+
+#### `POST /api/pipeline`
+
+Start a pipeline job. Returns immediately with a job ID.
+
+```bash
+# Using a preset:
+curl -X POST http://localhost:3003/api/pipeline \
+  -H 'Content-Type: application/json' \
+  -d '{ "preset": "datasource" }'
+
+# Available presets: "full", "datasource", "static", "heavy", "errors", "slow"
+
+# Or provide custom blocks:
+curl -X POST http://localhost:3003/api/pipeline \
+  -H 'Content-Type: application/json' \
+  -d '{ "blocks": [...], "template": { ... } }'
+```
+
+**Response:** `{ "jobId": "abc12345" }`
+
+#### `GET /api/pipeline/jobs`
+
+List all active/recent pipeline jobs (within the 5-minute TTL).
+
+```bash
+curl http://localhost:3003/api/pipeline/jobs
+```
+
+**Response:** Array of job summaries sorted newest-first:
+
+```json
+[
+  { "id": "a3f2c801", "status": "done", "preset": "heavy", "totalBlocks": 9, "startedAt": 1709500000000, "totalTimeMs": 464 },
+  { "id": "bc91d4e2", "status": "running", "preset": "slow", "totalBlocks": 4, "startedAt": 1709500001000 }
+]
+```
+
+#### `GET /api/pipeline/events`
+
+Global SSE stream — receives events from **all** pipeline jobs. Used by the multi-job monitor dashboard.
+
+```bash
+curl -N http://localhost:3003/api/pipeline/events
+```
+
+Does not replay old events; only streams live events as they happen. Use `/api/pipeline/jobs` for initial state.
+
+#### `GET /api/pipeline/:jobId/events`
+
+Per-job SSE stream. Replays all stored events, then streams new ones. Used when selecting a specific job in the dashboard.
+
+```bash
+curl -N http://localhost:3003/api/pipeline/abc12345/events
+```
+
+### Demo Data Endpoints
+
+The server includes mock data endpoints with varying latencies for testing data source resolution and stress testing:
+
+| Route | Latency | Returns |
+|-------|---------|---------|
+| `GET /api/demo/trades` | 150-350ms | `{ result: { trades: [...] } }` — 8 trade records |
+| `GET /api/demo/pnl` | 100-250ms | `{ data: { timeseries: [...] } }` — 14-point P&L series |
+| `GET /api/demo/positions` | 500-1000ms | `{ positions: [...] }` — 10 portfolio positions |
+| `GET /api/demo/compliance` | 1-2s | `{ checks: [...] }` — 8 compliance rule checks |
+| `GET /api/demo/unreliable` | 200ms, ~30% fail | `{ data: [...] }` or HTTP 500 error |
+
+**WebSocket** `ws://localhost:3003` — send `{ "action": "<name>" }`:
+
+| Action | Latency | Returns |
+|--------|---------|---------|
+| `getRecentTrades` | 150-350ms | `{ result: { trades: [...] } }` |
+| `getIntradayPnl` | 100-250ms | `{ data: { timeseries: [...] } }` |
+| `getRiskSummary` | 200-500ms | `{ desks: [...] }` |
+| `getPositions` | 500-1000ms | `{ positions: [...] }` |
+| `getCorrelationMatrix` | 800-1500ms | `{ matrix: [...] }` |
+| `getCompliance` | 1-2s | `{ checks: [...] }` |
+
+---
+
+## Pipeline Monitor
+
+The pipeline monitor at `GET /monitor` is a multi-job dashboard providing real-time visibility into all active and recent pipeline runs.
+
+### Features
+
+- **Multi-job tracking** — see all active/recent jobs in a sortable table with status, timing, and relative timestamps
+- **Job detail view** — click any job to see its full per-block breakdown
+- **Three-phase progress bar** — Resolve → Render → Assemble with per-phase timing
+- **Per-block status cards** — shows block type, data source kind, timing, and status (skip/fetching/rendering/done/error)
+- **Stuck detection** — blocks in-progress for >15 seconds get a yellow warning indicator
+- **Timing summary** — total pipeline time broken down by phase
+- **Email preview** — iframe rendering the composed email on completion
+- **Global SSE** — single persistent connection receives events from all jobs simultaneously
+- **Auto-selection** — new jobs are automatically selected for detail viewing
+- **Preset buttons** — one-click demos for various scenarios:
+  - **Inline Data** — 6-block trading report with hardcoded data (no resolve phase)
+  - **HTTP + WS** — 5 blocks fetching from local HTTP and WebSocket endpoints
+  - **Static Only** — blocks without data sources (resolve phase skips all)
+  - **Heavy Load** — 9 blocks mixing fast/slow HTTP and WebSocket sources
+  - **Errors** — blocks that intentionally fail (unreliable endpoints, bad URLs, unknown WS actions)
+  - **Slow Sources** — all slowest endpoints (1-2s) for testing stuck detection
+  - **Fire All** — launches 4 presets simultaneously to stress test concurrent execution
+  - **Custom JSON** — paste your own block array
+
+### Pipeline Event Types
+
+| Event | When | Key Data |
+|-------|------|----------|
+| `pipeline:start` | Job begins | `totalBlocks` |
+| `resolve:start` | Resolution phase begins | — |
+| `resolve:block` | Per-block resolution status | `blockIndex`, `status` (skip/fetching/done/error), `dataSourceKind`, `resolveTimeMs` |
+| `resolve:complete` | All blocks resolved | `resolveTimeMs` |
+| `render:start` | Render phase begins | — |
+| `render:block` | Per-block render status | `blockIndex`, `status` (rendering/done/error), `renderTimeMs` |
+| `render:complete` | All blocks rendered | `renderTimeMs` |
+| `assembly:start` | HTML assembly begins | — |
+| `assembly:complete` | Assembly done | — |
+| `pipeline:done` | Pipeline complete | `totalTimeMs`, `html` |
+| `pipeline:error` | Pipeline failed | `error` |
 
 ---
 
@@ -391,8 +554,6 @@ export type EmailBlock =
 import type { BlockRenderer, SparklineBlock } from '../../types/index.ts';
 
 export const sparklineRenderer: BlockRenderer<SparklineBlock> = async (block, ctx) => {
-  // Your rendering logic here — return an HTML string
-  // Could use SVG, canvas-to-image, or any other approach
   const svg = buildSparklineSvg(block.data, block.width ?? 200, block.height ?? 40, block.color ?? ctx.template.accentColor);
   return `<div style="text-align: center;">${svg}</div>`;
 };
@@ -412,13 +573,10 @@ Or register at runtime before calling `composeEmail()`:
 import { registerBlockRenderer, composeEmail } from './engine';
 
 registerBlockRenderer('sparkline', mySparklineRenderer);
-
 const result = await composeEmail([
   { type: 'sparkline', data: [1, 4, 2, 8, 5, 7] },
 ]);
 ```
-
-The orchestrator automatically picks up registered renderers by block type name — no changes needed to `composeEmail()`.
 
 ---
 
@@ -437,20 +595,19 @@ The output HTML is designed for maximum email client compatibility:
 
 ## Performance
 
-Typical render times for a 6-block email (2 charts + 2 tables + text + divider):
+Typical pipeline times by preset:
 
-| Block Type | Render Time |
-|------------|-------------|
-| Text | ~1-4ms |
-| Table | ~1-4ms |
-| Divider | ~1ms |
-| Chart (first) | ~500-650ms |
-| Chart (subsequent) | ~400-600ms |
-| **Total** | **~600-700ms** |
+| Preset | Blocks | Data Sources | Typical Time |
+|--------|--------|-------------|--------------|
+| Static Only | 6 | None | ~400-900ms |
+| HTTP + WS | 5 | 3 (HTTP + WS) | ~500-1000ms |
+| Heavy Load | 9 | 7 (fast + slow) | ~1.5-3s |
+| Slow Sources | 4 | 3 (all slow) | ~2-4s |
+| Errors | 5 | 4 (some fail) | ~300-500ms |
 
 Charts are the bottleneck because they require Puppeteer page creation + ag-Charts rendering. The headless browser is persistent (launched once at server startup), so subsequent renders skip the ~2-3s browser launch overhead.
 
-Charts within a single `composeEmail()` call render concurrently via `Promise.all`.
+Both data resolution and block rendering run concurrently via `Promise.all`. Jobs auto-expire from the monitor after 5 minutes.
 
 ---
 
@@ -460,7 +617,7 @@ Charts within a single `composeEmail()` call render concurrently via `Promise.al
 |------------|---------|
 | `react`, `react-dom` | Table SSR via `renderToStaticMarkup` (email-table) |
 | `puppeteer` | Headless Chrome for ag-Charts rendering (email-chart) |
-| `ag-charts-community` | Chart library (loaded in Puppeteer, lives in email-chart) |
+| `ws` | WebSocket client (data resolution) and demo server |
 | `tsx` | TypeScript execution for the server (no build step) |
 | `vite` | Dev server for the browser demo UI |
 | `@mui/material` | Demo UI components (not used in email output) |
