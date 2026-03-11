@@ -21,8 +21,9 @@ import TimerIcon from '@mui/icons-material/Timer';
 import StorageIcon from '@mui/icons-material/Storage';
 import { query } from '../engine/index.ts';
 import { DATASETS, EXAMPLE_QUERIES } from './sample-data.ts';
-import QueryBuilder from './QueryBuilder.tsx';
+import { PipeQueryBuilder } from '../components/PipeQueryBuilder/index.ts';
 import LivePanel from './LivePanel.tsx';
+import BenchmarkPanel from './BenchmarkPanel.tsx';
 
 export default function Playground() {
   const [queryText, setQueryText] = useState('items | where(price > 100) | sort(price desc)');
@@ -30,7 +31,7 @@ export default function Playground() {
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [executionTime, setExecutionTime] = useState<number | null>(null);
-  const [mode, setMode] = useState<'editor' | 'builder' | 'live'>('editor');
+  const [mode, setMode] = useState<'editor' | 'builder' | 'live' | 'bench'>('editor');
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const execute = useCallback(() => {
@@ -121,6 +122,7 @@ export default function Playground() {
             <ToggleButton value="editor" sx={{ px: 1.5, py: 0.5, fontSize: '0.75rem' }}>Editor</ToggleButton>
             <ToggleButton value="builder" sx={{ px: 1.5, py: 0.5, fontSize: '0.75rem' }}>Builder</ToggleButton>
             <ToggleButton value="live" sx={{ px: 1.5, py: 0.5, fontSize: '0.75rem' }}>Live</ToggleButton>
+            <ToggleButton value="bench" sx={{ px: 1.5, py: 0.5, fontSize: '0.75rem' }}>Bench</ToggleButton>
           </ToggleButtonGroup>
         </Stack>
 
@@ -198,15 +200,17 @@ export default function Playground() {
             )}
           </>
         ) : mode === 'builder' ? (
-          <QueryBuilder
+          <PipeQueryBuilder
+            orientation="vertical"
             source={builderSource}
             onSourceChange={setBuilderSource}
             availableSources={availableSources}
             availableFields={availableFields}
-            dataContext={dataContext}
             onQueryChange={setQueryText}
+            joinSources={Object.keys(dataContext).filter(k => k !== builderSource)}
+            rowCount={Array.isArray(dataContext[builderSource]) ? dataContext[builderSource].length : 0}
           />
-        ) : (
+        ) : mode === 'live' ? (
           <LivePanel
             dataContext={dataContext}
             source={builderSource}
@@ -215,6 +219,8 @@ export default function Playground() {
             onExecutionTimeChange={setExecutionTime}
             onErrorChange={setError}
           />
+        ) : (
+          <BenchmarkPanel />
         )}
       </Paper>
 
