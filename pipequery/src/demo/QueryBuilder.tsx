@@ -11,18 +11,35 @@ import {
   Stack,
   Chip,
   IconButton,
-  Divider,
   Autocomplete,
   ToggleButton,
   ToggleButtonGroup,
   Button,
-  Menu,
+  Collapse,
+  Popover,
   alpha,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import StorageIcon from '@mui/icons-material/Storage';
+import CodeIcon from '@mui/icons-material/Code';
+import FilterListIcon from '@mui/icons-material/FilterList';
+import ViewColumnIcon from '@mui/icons-material/ViewColumn';
+import SwapVertIcon from '@mui/icons-material/SwapVert';
+import WorkspacesIcon from '@mui/icons-material/Workspaces';
+import VerticalAlignTopIcon from '@mui/icons-material/VerticalAlignTop';
+import VerticalAlignBottomIcon from '@mui/icons-material/VerticalAlignBottom';
+import MergeTypeIcon from '@mui/icons-material/MergeType';
+import TransformIcon from '@mui/icons-material/Transform';
+import BarChartIcon from '@mui/icons-material/BarChart';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
+import CompressIcon from '@mui/icons-material/Compress';
+import DeblurIcon from '@mui/icons-material/Deblur';
+import PivotTableChartIcon from '@mui/icons-material/PivotTableChart';
 import type { DataContext } from '../engine/index.ts';
 import {
   type PipelineStep,
@@ -30,9 +47,32 @@ import {
   type StepConfig,
   createDefaultConfig,
   generateQuery,
-  OPERATION_LABELS,
-  ALL_OPERATIONS,
+  OPERATION_META,
+  CATEGORIES_ORDERED,
+  CATEGORY_COLORS,
+  getStepSummary,
 } from './query-builder-types.ts';
+
+// ─── Icon Map ────────────────────────────────────────────────────────────────
+
+const OPERATION_ICONS: Record<OperationType, React.ReactElement> = {
+  where:     <FilterListIcon sx={{ fontSize: 16 }} />,
+  distinct:  <DeblurIcon sx={{ fontSize: 16 }} />,
+  select:    <ViewColumnIcon sx={{ fontSize: 16 }} />,
+  map:       <TransformIcon sx={{ fontSize: 16 }} />,
+  flatten:   <UnfoldLessIcon sx={{ fontSize: 16 }} />,
+  transpose: <SwapHorizIcon sx={{ fontSize: 16 }} />,
+  sort:      <SwapVertIcon sx={{ fontSize: 16 }} />,
+  groupBy:   <WorkspacesIcon sx={{ fontSize: 16 }} />,
+  reduce:    <CompressIcon sx={{ fontSize: 16 }} />,
+  rollup:    <BarChartIcon sx={{ fontSize: 16 }} />,
+  pivot:     <PivotTableChartIcon sx={{ fontSize: 16 }} />,
+  first:     <VerticalAlignTopIcon sx={{ fontSize: 16 }} />,
+  last:      <VerticalAlignBottomIcon sx={{ fontSize: 16 }} />,
+  join:      <MergeTypeIcon sx={{ fontSize: 16 }} />,
+};
+
+// ─── Props ───────────────────────────────────────────────────────────────────
 
 interface QueryBuilderProps {
   source: string;
@@ -45,6 +85,8 @@ interface QueryBuilderProps {
 
 let nextStepId = 1;
 
+// ─── Main Component ──────────────────────────────────────────────────────────
+
 export default function QueryBuilder({
   source,
   onSourceChange,
@@ -54,6 +96,7 @@ export default function QueryBuilder({
   onQueryChange,
 }: QueryBuilderProps) {
   const [steps, setSteps] = useState<PipelineStep[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const generatedQuery = useMemo(
     () => generateQuery(source, steps),
@@ -64,12 +107,19 @@ export default function QueryBuilder({
     onQueryChange(generatedQuery);
   }, [generatedQuery, onQueryChange]);
 
-  const addStep = useCallback((type: OperationType) => {
-    setSteps(prev => [...prev, { id: `step_${nextStepId++}`, step: createDefaultConfig(type) }]);
+  const insertStepAt = useCallback((index: number, type: OperationType) => {
+    const newId = `step_${nextStepId++}`;
+    setSteps(prev => {
+      const next = [...prev];
+      next.splice(index, 0, { id: newId, step: createDefaultConfig(type) });
+      return next;
+    });
+    setExpandedId(newId);
   }, []);
 
   const removeStep = useCallback((id: string) => {
     setSteps(prev => prev.filter(s => s.id !== id));
+    setExpandedId(prev => prev === id ? null : prev);
   }, []);
 
   const moveStep = useCallback((id: string, direction: 'up' | 'down') => {
@@ -93,64 +143,231 @@ export default function QueryBuilder({
     [dataContext, source],
   );
 
+  const rowCount = useMemo(() => {
+    const d = dataContext[source];
+    return Array.isArray(d) ? d.length : 0;
+  }, [dataContext, source]);
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, overflow: 'auto', flex: 1 }}>
-      <FormControl size="small" fullWidth>
-        <InputLabel>Source collection</InputLabel>
-        <Select value={source} label="Source collection" onChange={e => onSourceChange(e.target.value)}>
-          {availableSources.map(s => (
-            <MenuItem key={s} value={s}>{s}</MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-
-      {steps.map((step, idx) => (
-        <StepCard
-          key={step.id}
-          step={step}
-          isFirst={idx === 0}
-          isLast={idx === steps.length - 1}
-          availableFields={availableFields}
-          joinSources={joinSources}
-          onUpdate={(newStep) => updateStep(step.id, newStep)}
-          onRemove={() => removeStep(step.id)}
-          onMoveUp={() => moveStep(step.id, 'up')}
-          onMoveDown={() => moveStep(step.id, 'down')}
+    <Box sx={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      overflow: 'auto',
+      flex: 1,
+      py: 1,
+    }}>
+      <Box sx={{ width: '100%', maxWidth: 520 }}>
+        {/* Source Node */}
+        <SourceNode
+          source={source}
+          onSourceChange={onSourceChange}
+          availableSources={availableSources}
+          rowCount={rowCount}
         />
-      ))}
 
-      <AddStepMenu onAdd={addStep} />
+        {/* Connector before first step */}
+        <PipelineConnector onInsert={(type) => insertStepAt(0, type)} />
 
-      <Divider />
-      <Typography variant="caption" color="text.secondary">Generated Query</Typography>
-      <Box sx={{
-        p: 1.5,
-        bgcolor: 'background.default',
-        borderRadius: 1,
-        fontFamily: '"JetBrains Mono", "Fira Code", "Consolas", monospace',
-        fontSize: '0.8rem',
-        color: 'text.primary',
-        minHeight: 40,
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-all',
-        lineHeight: 1.6,
-      }}>
-        {generatedQuery || '(select a source to begin)'}
+        {/* Step Cards */}
+        {steps.map((step, idx) => (
+          <Box key={step.id}>
+            <StepCard
+              step={step}
+              isFirst={idx === 0}
+              isLast={idx === steps.length - 1}
+              expanded={expandedId === step.id}
+              onToggleExpand={() => setExpandedId(expandedId === step.id ? null : step.id)}
+              availableFields={availableFields}
+              joinSources={joinSources}
+              onUpdate={(newStep) => updateStep(step.id, newStep)}
+              onRemove={() => removeStep(step.id)}
+              onMoveUp={() => moveStep(step.id, 'up')}
+              onMoveDown={() => moveStep(step.id, 'down')}
+            />
+            <PipelineConnector onInsert={(type) => insertStepAt(idx + 1, type)} />
+          </Box>
+        ))}
+
+        {/* Result Node */}
+        <ResultNode query={generatedQuery} />
       </Box>
     </Box>
   );
 }
 
-// ─── Step Card ──────────────────────────────────────────────────────────────
+// ─── Source Node ──────────────────────────────────────────────────────────────
+
+function SourceNode({ source, onSourceChange, availableSources, rowCount }: {
+  source: string;
+  onSourceChange: (s: string) => void;
+  availableSources: string[];
+  rowCount: number;
+}) {
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        p: 2,
+        borderTop: '3px solid',
+        borderTopColor: 'primary.main',
+        background: (t) => `linear-gradient(135deg, ${alpha(t.palette.primary.main, 0.06)} 0%, transparent 60%)`,
+      }}
+    >
+      <Stack direction="row" spacing={1.5} alignItems="center">
+        <StorageIcon sx={{ color: 'primary.main', fontSize: 20 }} />
+        <FormControl size="small" sx={{ flex: 1 }}>
+          <InputLabel>Source</InputLabel>
+          <Select value={source} label="Source" onChange={e => onSourceChange(e.target.value)}>
+            {availableSources.map(s => (
+              <MenuItem key={s} value={s}>{s}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <Chip
+          label={`${rowCount.toLocaleString()} rows`}
+          size="small"
+          variant="outlined"
+          sx={{
+            fontFamily: '"JetBrains Mono", monospace',
+            fontSize: '0.7rem',
+            borderColor: (t) => alpha(t.palette.primary.main, 0.3),
+          }}
+        />
+      </Stack>
+    </Paper>
+  );
+}
+
+// ─── Pipeline Connector ──────────────────────────────────────────────────────
+
+function PipelineConnector({ onInsert }: { onInsert: (type: OperationType) => void }) {
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+
+  return (
+    <Box sx={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      py: 0.25,
+    }}>
+      <Box sx={{
+        width: 2,
+        height: 10,
+        bgcolor: (t) => alpha(t.palette.text.secondary, 0.2),
+      }} />
+      <IconButton
+        size="small"
+        onClick={(e) => setAnchorEl(e.currentTarget)}
+        sx={{
+          width: 26,
+          height: 26,
+          border: '2px dashed',
+          borderColor: (t) => alpha(t.palette.text.secondary, 0.25),
+          color: 'text.secondary',
+          transition: 'all 0.2s',
+          '&:hover': {
+            borderColor: 'primary.main',
+            borderStyle: 'solid',
+            color: 'primary.main',
+            bgcolor: (t) => alpha(t.palette.primary.main, 0.08),
+            transform: 'scale(1.15)',
+          },
+        }}
+      >
+        <AddIcon sx={{ fontSize: 14 }} />
+      </IconButton>
+      <Box sx={{
+        width: 2,
+        height: 10,
+        bgcolor: (t) => alpha(t.palette.text.secondary, 0.2),
+      }} />
+
+      <StepPicker
+        anchorEl={anchorEl}
+        onClose={() => setAnchorEl(null)}
+        onSelect={(type) => { onInsert(type); setAnchorEl(null); }}
+      />
+    </Box>
+  );
+}
+
+// ─── Step Picker (Categorized Popover) ───────────────────────────────────────
+
+function StepPicker({ anchorEl, onClose, onSelect }: {
+  anchorEl: HTMLElement | null;
+  onClose: () => void;
+  onSelect: (type: OperationType) => void;
+}) {
+  return (
+    <Popover
+      open={Boolean(anchorEl)}
+      anchorEl={anchorEl}
+      onClose={onClose}
+      anchorOrigin={{ vertical: 'center', horizontal: 'right' }}
+      transformOrigin={{ vertical: 'center', horizontal: 'left' }}
+      slotProps={{
+        paper: {
+          sx: { p: 2, minWidth: 260, maxWidth: 340 },
+        },
+      }}
+    >
+      {CATEGORIES_ORDERED.map(({ key, label, ops }) => (
+        <Box key={key} sx={{ mb: 1.5, '&:last-child': { mb: 0 } }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: CATEGORY_COLORS[key],
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              fontSize: '0.6rem',
+              mb: 0.5,
+              display: 'block',
+            }}
+          >
+            {label}
+          </Typography>
+          <Stack direction="row" flexWrap="wrap" gap={0.75}>
+            {ops.map(op => (
+              <Chip
+                key={op}
+                label={OPERATION_META[op].label}
+                size="small"
+                icon={OPERATION_ICONS[op]}
+                onClick={() => onSelect(op)}
+                variant="outlined"
+                sx={{
+                  cursor: 'pointer',
+                  borderColor: alpha(CATEGORY_COLORS[key], 0.35),
+                  color: CATEGORY_COLORS[key],
+                  '& .MuiChip-icon': { color: CATEGORY_COLORS[key] },
+                  '&:hover': {
+                    bgcolor: alpha(CATEGORY_COLORS[key], 0.12),
+                    borderColor: CATEGORY_COLORS[key],
+                  },
+                }}
+              />
+            ))}
+          </Stack>
+        </Box>
+      ))}
+    </Popover>
+  );
+}
+
+// ─── Step Card ───────────────────────────────────────────────────────────────
 
 function StepCard({
-  step, isFirst, isLast,
+  step, isFirst, isLast, expanded, onToggleExpand,
   availableFields, joinSources,
   onUpdate, onRemove, onMoveUp, onMoveDown,
 }: {
   step: PipelineStep;
   isFirst: boolean;
   isLast: boolean;
+  expanded: boolean;
+  onToggleExpand: () => void;
   availableFields: string[];
   joinSources: string[];
   onUpdate: (step: StepConfig) => void;
@@ -158,45 +375,143 @@ function StepCard({
   onMoveUp: () => void;
   onMoveDown: () => void;
 }) {
+  const meta = OPERATION_META[step.step.type];
+  const summary = getStepSummary(step.step);
+
   return (
     <Paper
       variant="outlined"
       sx={{
-        p: 1.5,
-        border: '1px solid',
-        borderColor: (t) => alpha(t.palette.primary.main, 0.2),
-        '&:hover': { borderColor: (t) => alpha(t.palette.primary.main, 0.4) },
+        borderLeft: '4px solid',
+        borderLeftColor: meta.color,
+        borderRadius: '4px 8px 8px 4px',
+        overflow: 'hidden',
+        transition: 'box-shadow 0.2s',
+        '&:hover': {
+          boxShadow: `0 0 0 1px ${alpha(meta.color, 0.25)}`,
+        },
+        '& .step-actions': {
+          opacity: 0,
+          transition: 'opacity 0.15s',
+        },
+        '&:hover .step-actions': {
+          opacity: 1,
+        },
       }}
     >
-      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-        <Chip
-          label={OPERATION_LABELS[step.step.type]}
-          size="small"
-          color="primary"
-          sx={{ fontWeight: 600, fontSize: '0.7rem' }}
-        />
+      {/* Header — always visible, clickable */}
+      <Stack
+        direction="row"
+        spacing={1}
+        alignItems="center"
+        onClick={onToggleExpand}
+        sx={{
+          px: 1.5,
+          py: 1,
+          cursor: 'pointer',
+          '&:hover': {
+            bgcolor: alpha(meta.color, 0.04),
+          },
+        }}
+      >
+        <Box sx={{ color: meta.color, display: 'flex', alignItems: 'center' }}>
+          {OPERATION_ICONS[step.step.type]}
+        </Box>
+        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+          {meta.label}
+        </Typography>
+        {!expanded && (
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              fontFamily: '"JetBrains Mono", monospace',
+              fontSize: '0.7rem',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              maxWidth: 180,
+            }}
+          >
+            {summary}
+          </Typography>
+        )}
         <Box sx={{ flex: 1 }} />
-        <IconButton size="small" onClick={onMoveUp} disabled={isFirst}>
-          <ArrowUpwardIcon sx={{ fontSize: 16 }} />
-        </IconButton>
-        <IconButton size="small" onClick={onMoveDown} disabled={isLast}>
-          <ArrowDownwardIcon sx={{ fontSize: 16 }} />
-        </IconButton>
-        <IconButton size="small" onClick={onRemove} sx={{ color: 'error.main' }}>
-          <DeleteIcon sx={{ fontSize: 16 }} />
-        </IconButton>
+
+        {/* Hover actions */}
+        <Stack direction="row" spacing={0.25} className="step-actions" onClick={e => e.stopPropagation()}>
+          <IconButton size="small" onClick={onMoveUp} disabled={isFirst} sx={{ p: 0.5 }}>
+            <ArrowUpwardIcon sx={{ fontSize: 14 }} />
+          </IconButton>
+          <IconButton size="small" onClick={onMoveDown} disabled={isLast} sx={{ p: 0.5 }}>
+            <ArrowDownwardIcon sx={{ fontSize: 14 }} />
+          </IconButton>
+          <IconButton size="small" onClick={onRemove} sx={{ p: 0.5, color: 'error.main' }}>
+            <DeleteOutlineIcon sx={{ fontSize: 14 }} />
+          </IconButton>
+        </Stack>
+
+        <ExpandMoreIcon sx={{
+          fontSize: 18,
+          color: 'text.secondary',
+          transition: 'transform 0.2s',
+          transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+        }} />
       </Stack>
-      <StepConfigForm
-        step={step.step}
-        availableFields={availableFields}
-        joinSources={joinSources}
-        onChange={onUpdate}
-      />
+
+      {/* Expandable config form */}
+      <Collapse in={expanded} timeout={200}>
+        <Box sx={{ px: 1.5, pb: 1.5 }}>
+          <StepConfigForm
+            step={step.step}
+            availableFields={availableFields}
+            joinSources={joinSources}
+            onChange={onUpdate}
+          />
+        </Box>
+      </Collapse>
     </Paper>
   );
 }
 
-// ─── Config Forms ───────────────────────────────────────────────────────────
+// ─── Result Node ─────────────────────────────────────────────────────────────
+
+function ResultNode({ query }: { query: string }) {
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        p: 2,
+        borderBottom: '3px solid',
+        borderBottomColor: 'success.main',
+        background: (t) => `linear-gradient(135deg, ${alpha(t.palette.success.main, 0.04)} 0%, transparent 60%)`,
+      }}
+    >
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+        <CodeIcon sx={{ fontSize: 18, color: 'success.main' }} />
+        <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+          Generated Query
+        </Typography>
+      </Stack>
+      <Box sx={{
+        p: 1.5,
+        bgcolor: 'background.default',
+        borderRadius: 1,
+        fontFamily: '"JetBrains Mono", "Fira Code", "Consolas", monospace',
+        fontSize: '0.75rem',
+        color: 'text.primary',
+        minHeight: 32,
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-all',
+        lineHeight: 1.6,
+      }}>
+        {query || '(select a source to begin)'}
+      </Box>
+    </Paper>
+  );
+}
+
+// ─── Config Forms ────────────────────────────────────────────────────────────
 
 const monoSx = { fontFamily: '"JetBrains Mono", monospace', fontSize: '0.8rem' };
 
@@ -279,7 +594,7 @@ function StepConfigForm({
                   const criteria = step.config.criteria.filter((_, j) => j !== i);
                   onChange({ ...step, config: { criteria } });
                 }}>
-                  <DeleteIcon sx={{ fontSize: 14 }} />
+                  <DeleteOutlineIcon sx={{ fontSize: 14 }} />
                 </IconButton>
               )}
             </Stack>
@@ -456,31 +771,4 @@ function StepConfigForm({
         />
       );
   }
-}
-
-// ─── Add Step Menu ──────────────────────────────────────────────────────────
-
-function AddStepMenu({ onAdd }: { onAdd: (type: OperationType) => void }) {
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-
-  return (
-    <>
-      <Button
-        variant="outlined"
-        size="small"
-        startIcon={<AddIcon />}
-        onClick={e => setAnchorEl(e.currentTarget)}
-        sx={{ alignSelf: 'flex-start' }}
-      >
-        Add Step
-      </Button>
-      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
-        {ALL_OPERATIONS.map(op => (
-          <MenuItem key={op} onClick={() => { onAdd(op); setAnchorEl(null); }}>
-            {OPERATION_LABELS[op]}
-          </MenuItem>
-        ))}
-      </Menu>
-    </>
-  );
 }

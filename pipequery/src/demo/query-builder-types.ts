@@ -92,6 +92,97 @@ export function generateQuery(source: string, steps: PipelineStep[]): string {
   return parts.join(' | ');
 }
 
+// ─── Operation Metadata ──────────────────────────────────────────────────────
+
+export type OperationCategory = 'filter' | 'transform' | 'sort' | 'aggregate' | 'limit' | 'join';
+
+export const CATEGORY_COLORS: Record<OperationCategory, string> = {
+  filter:    '#42a5f5',
+  transform: '#66bb6a',
+  sort:      '#ffa726',
+  aggregate: '#ab47bc',
+  limit:     '#26a69a',
+  join:      '#ff7043',
+};
+
+export interface OperationMeta {
+  label: string;
+  category: OperationCategory;
+  color: string;
+}
+
+export const OPERATION_META: Record<OperationType, OperationMeta> = {
+  where:     { label: 'Filter (where)',   category: 'filter',    color: CATEGORY_COLORS.filter },
+  distinct:  { label: 'Distinct',         category: 'filter',    color: CATEGORY_COLORS.filter },
+  select:    { label: 'Select fields',    category: 'transform', color: CATEGORY_COLORS.transform },
+  map:       { label: 'Map (add fields)', category: 'transform', color: CATEGORY_COLORS.transform },
+  flatten:   { label: 'Flatten',          category: 'transform', color: CATEGORY_COLORS.transform },
+  transpose: { label: 'Transpose',        category: 'transform', color: CATEGORY_COLORS.transform },
+  sort:      { label: 'Sort',             category: 'sort',      color: CATEGORY_COLORS.sort },
+  groupBy:   { label: 'Group By',         category: 'aggregate', color: CATEGORY_COLORS.aggregate },
+  reduce:    { label: 'Reduce',           category: 'aggregate', color: CATEGORY_COLORS.aggregate },
+  rollup:    { label: 'Rollup',           category: 'aggregate', color: CATEGORY_COLORS.aggregate },
+  pivot:     { label: 'Pivot',            category: 'aggregate', color: CATEGORY_COLORS.aggregate },
+  first:     { label: 'First N',          category: 'limit',     color: CATEGORY_COLORS.limit },
+  last:      { label: 'Last N',           category: 'limit',     color: CATEGORY_COLORS.limit },
+  join:      { label: 'Join',             category: 'join',      color: CATEGORY_COLORS.join },
+};
+
+export const CATEGORIES_ORDERED: { key: OperationCategory; label: string; ops: OperationType[] }[] = [
+  { key: 'filter',    label: 'Filter',    ops: ['where', 'distinct'] },
+  { key: 'transform', label: 'Transform', ops: ['select', 'map', 'flatten', 'transpose'] },
+  { key: 'sort',      label: 'Sort',      ops: ['sort'] },
+  { key: 'aggregate', label: 'Aggregate', ops: ['groupBy', 'reduce', 'rollup', 'pivot'] },
+  { key: 'limit',     label: 'Limit',     ops: ['first', 'last'] },
+  { key: 'join',      label: 'Join',      ops: ['join'] },
+];
+
+export function getStepSummary(step: StepConfig): string {
+  switch (step.type) {
+    case 'where':
+      return step.config.condition || '(no condition)';
+    case 'select': {
+      const all = [...step.config.fields, ...step.config.expressions.filter(Boolean)];
+      return all.length > 0 ? all.join(', ') : '(no fields)';
+    }
+    case 'sort': {
+      const parts = step.config.criteria.filter(c => c.field).map(c =>
+        c.direction === 'desc' ? `${c.field} \u2193` : `${c.field} \u2191`
+      );
+      return parts.length > 0 ? parts.join(', ') : '(no criteria)';
+    }
+    case 'groupBy':
+      return step.config.fields.length > 0 ? step.config.fields.join(', ') : '(no fields)';
+    case 'join':
+      return step.config.rightSource
+        ? `${step.config.rightSource} on ${step.config.condition || '...'}`
+        : '(not configured)';
+    case 'first':
+    case 'last':
+      return `${step.config.count} rows`;
+    case 'distinct':
+      return step.config.fields.length > 0 ? step.config.fields.join(', ') : 'all fields';
+    case 'map': {
+      const exprs = step.config.expressions.filter(Boolean);
+      return exprs.length > 0 ? exprs.join(', ') : '(no expressions)';
+    }
+    case 'reduce':
+      return step.config.accumulator || '(no accumulator)';
+    case 'rollup': {
+      const parts = [...step.config.keys, ...step.config.aggregates.filter(Boolean)];
+      return parts.length > 0 ? parts.join(', ') : '(not configured)';
+    }
+    case 'pivot':
+      return step.config.pivotField || '(no pivot field)';
+    case 'flatten':
+      return step.config.field || 'all';
+    case 'transpose':
+      return step.config.headerField || 'auto';
+  }
+}
+
+// ─── DSL Generation (internals) ──────────────────────────────────────────────
+
 function stepToDsl(step: StepConfig): string | null {
   switch (step.type) {
     case 'where':
