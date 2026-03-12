@@ -148,10 +148,34 @@ export interface FlattenOp {
   field?: Expression;
 }
 
+export type AggregateFnName =
+  | 'sum' | 'avg' | 'min' | 'max' | 'count'
+  | 'median' | 'stddev' | 'var' | 'percentile'
+  | 'skew' | 'kurt'
+  | 'vwap' | 'wavg' | 'drawdown'
+  | 'pct' | 'sharpe' | 'calmar' | 'sortino' | 'info_ratio'
+  | 'distinct_count' | 'sum_abs' | 'abs_sum'
+  | 'first_value' | 'last_value';
+
+export const AGGREGATE_NAMES: ReadonlySet<string> = new Set<AggregateFnName>([
+  'sum', 'avg', 'min', 'max', 'count',
+  'median', 'stddev', 'var', 'percentile',
+  'skew', 'kurt',
+  'vwap', 'wavg', 'drawdown',
+  'pct', 'sharpe', 'calmar', 'sortino', 'info_ratio',
+  'distinct_count', 'sum_abs', 'abs_sum',
+  'first_value', 'last_value',
+]);
+
+export const TWO_ARG_AGGREGATES: ReadonlySet<string> = new Set([
+  'percentile', 'vwap', 'wavg', 'info_ratio',
+]);
+
 export interface AggregateOp {
   kind: 'AggregateOp';
-  function: 'sum' | 'avg' | 'min' | 'max' | 'count';
+  function: AggregateFnName;
   field?: Expression;
+  args?: Expression[];
 }
 
 export interface RollupOp {

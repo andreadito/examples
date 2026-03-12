@@ -20,6 +20,12 @@ const FUNCTIONS = new Set([
   'sum', 'avg', 'min', 'max', 'count', 'lower', 'upper', 'len', 'concat',
   'abs', 'round', 'if', 'coalesce', 'row_number', 'running_sum',
   'running_avg', 'running_min', 'running_max', 'running_count', 'lag', 'lead',
+  'median', 'stddev', 'var', 'percentile',
+  'skew', 'kurt',
+  'vwap', 'wavg', 'drawdown',
+  'pct', 'sharpe', 'calmar', 'sortino', 'info_ratio',
+  'distinct_count', 'sum_abs', 'abs_sum',
+  'first_value', 'last_value',
 ]);
 
 function highlightPipe(code: string): JSX.Element[] {
@@ -683,27 +689,136 @@ items | groupBy(category) | select(category, count() as n, avg(price) as avg)`}<
           <SubSection title="Standalone Aggregates" category="Aggregate">
             <P>
               Aggregate functions can be used as standalone operations to reduce an entire
-              dataset to a single scalar value.
+              dataset to a single scalar value, or inside <Code>select</Code> after <Code>groupBy</Code> to
+              aggregate each group.
             </P>
             <CodeBlock>{`items | count()
 items | sum(price)
-items | avg(salary)
-items | min(price)
-items | max(stock)`}</CodeBlock>
-            <Box
-              sx={{
-                my: 2,
-                p: 2,
-                borderRadius: '6px',
-                bgcolor: alpha('#ff9800', 0.06),
-                border: '1px solid',
-                borderColor: alpha('#ff9800', 0.15),
-              }}
-            >
-              <Typography sx={{ fontSize: '0.82rem', color: '#ffb74d', lineHeight: 1.6 }}>
-                <strong>Available aggregates:</strong>{' '}
-                <Code>count()</Code> <Code>sum(field)</Code> <Code>avg(field)</Code>{' '}
-                <Code>min(field)</Code> <Code>max(field)</Code>
+items | median(price)
+items | percentile(price, 90)`}</CodeBlock>
+          </SubSection>
+
+          <SubSection title="Basic Aggregates" category="Aggregate">
+            <P>Core aggregation functions that work on any numeric field.</P>
+            <Box sx={{ my: 2, p: 2, borderRadius: '6px', bgcolor: alpha('#ff9800', 0.06), border: '1px solid', borderColor: alpha('#ff9800', 0.15) }}>
+              <Typography sx={{ fontSize: '0.82rem', color: '#ffb74d', lineHeight: 1.8 }}>
+                <Code>count()</Code> — row count &nbsp;
+                <Code>sum(field)</Code> — total &nbsp;
+                <Code>avg(field)</Code> — arithmetic mean &nbsp;
+                <Code>min(field)</Code> — minimum &nbsp;
+                <Code>max(field)</Code> — maximum
+              </Typography>
+            </Box>
+          </SubSection>
+
+          <SubSection title="Statistical Aggregates" category="Aggregate">
+            <P>
+              Statistical measures for distribution analysis. Works standalone or after <Code>groupBy</Code>.
+            </P>
+            <CodeBlock>{`// Standalone
+items | median(price)
+items | percentile(price, 75)
+
+// Grouped — price statistics per category
+items | groupBy(category) | select(
+  category,
+  avg(price) as mean,
+  median(price) as med,
+  stddev(price) as vol,
+  var(price) as variance,
+  percentile(price, 95) as p95
+)`}</CodeBlock>
+            <Box sx={{ my: 2, p: 2, borderRadius: '6px', bgcolor: alpha('#5b9cf6', 0.06), border: '1px solid', borderColor: alpha('#5b9cf6', 0.15) }}>
+              <Typography sx={{ fontSize: '0.82rem', color: '#82aaff', lineHeight: 1.8 }}>
+                <Code>median(field)</Code> — 50th percentile &nbsp;
+                <Code>stddev(field)</Code> — population standard deviation &nbsp;
+                <Code>var(field)</Code> — population variance &nbsp;
+                <Code>percentile(field, p)</Code> — p-th percentile (0–100)
+              </Typography>
+            </Box>
+          </SubSection>
+
+          <SubSection title="Distribution Aggregates" category="Aggregate">
+            <P>Higher-order distribution shape measures — skewness and kurtosis.</P>
+            <CodeBlock>{`trades | groupBy(symbol) | select(
+  symbol,
+  skew(return) as skewness,
+  kurt(return) as kurtosis
+)`}</CodeBlock>
+            <Box sx={{ my: 2, p: 2, borderRadius: '6px', bgcolor: alpha('#5b9cf6', 0.06), border: '1px solid', borderColor: alpha('#5b9cf6', 0.15) }}>
+              <Typography sx={{ fontSize: '0.82rem', color: '#82aaff', lineHeight: 1.8 }}>
+                <Code>skew(field)</Code> — skewness (asymmetry: 0 = symmetric) &nbsp;
+                <Code>kurt(field)</Code> — excess kurtosis (tail weight: 0 = normal)
+              </Typography>
+            </Box>
+          </SubSection>
+
+          <SubSection title="Finance Aggregates" category="Aggregate">
+            <P>
+              Finance-grade aggregates inspired by Finos Perspective and real trading/risk workflows.
+              VWAP, weighted averages, and drawdown analysis.
+            </P>
+            <CodeBlock>{`// Volume-weighted average price per symbol
+trades | groupBy(symbol) | select(
+  symbol,
+  vwap(price, volume) as vwap,
+  wavg(price, volume) as wAvg,
+  drawdown(price) as maxDD
+)`}</CodeBlock>
+            <Box sx={{ my: 2, p: 2, borderRadius: '6px', bgcolor: alpha('#c3e88d', 0.08), border: '1px solid', borderColor: alpha('#c3e88d', 0.15) }}>
+              <Typography sx={{ fontSize: '0.82rem', color: '#c3e88d', lineHeight: 1.8 }}>
+                <Code>vwap(price, volume)</Code> — volume-weighted average price &nbsp;
+                <Code>wavg(field, weight)</Code> — weighted average &nbsp;
+                <Code>drawdown(field)</Code> — max peak-to-trough decline (negative ratio)
+              </Typography>
+            </Box>
+          </SubSection>
+
+          <SubSection title="Risk Ratios" category="Aggregate">
+            <P>
+              Risk-adjusted return ratios commonly used in portfolio analysis. All assume a
+              risk-free rate of 0 and operate on return series.
+            </P>
+            <CodeBlock>{`trades | groupBy(symbol) | select(
+  symbol,
+  sharpe(return) as sharpe,
+  sortino(return) as sortino,
+  calmar(return) as calmar
+)
+
+// Percentage of total (group sum / grand total)
+sales | groupBy(region) | select(
+  region,
+  sum(revenue) as total,
+  pct(revenue) as share
+)`}</CodeBlock>
+            <Box sx={{ my: 2, p: 2, borderRadius: '6px', bgcolor: alpha('#c3e88d', 0.08), border: '1px solid', borderColor: alpha('#c3e88d', 0.15) }}>
+              <Typography sx={{ fontSize: '0.82rem', color: '#c3e88d', lineHeight: 1.8 }}>
+                <Code>sharpe(returns)</Code> — mean / stddev &nbsp;
+                <Code>sortino(returns)</Code> — mean / downside deviation &nbsp;
+                <Code>calmar(returns)</Code> — mean / |max drawdown| &nbsp;
+                <Code>info_ratio(returns, benchmark)</Code> — mean(excess) / stddev(excess) &nbsp;
+                <Code>pct(field)</Code> — group sum as % of grand total
+              </Typography>
+            </Box>
+          </SubSection>
+
+          <SubSection title="Counting & Range" category="Aggregate">
+            <P>Distinct counting, absolute-value sums, and positional value extraction.</P>
+            <CodeBlock>{`trades | groupBy(sector) | select(
+  sector,
+  distinct_count(symbol) as symbols,
+  sum_abs(return) as totalAbsReturn,
+  first_value(date) as earliest,
+  last_value(date) as latest
+)`}</CodeBlock>
+            <Box sx={{ my: 2, p: 2, borderRadius: '6px', bgcolor: alpha('#ff9800', 0.06), border: '1px solid', borderColor: alpha('#ff9800', 0.15) }}>
+              <Typography sx={{ fontSize: '0.82rem', color: '#ffb74d', lineHeight: 1.8 }}>
+                <Code>distinct_count(field)</Code> — count unique values &nbsp;
+                <Code>sum_abs(field)</Code> — sum of |values| &nbsp;
+                <Code>abs_sum(field)</Code> — |sum of values| &nbsp;
+                <Code>first_value(field)</Code> — first value in group &nbsp;
+                <Code>last_value(field)</Code> — last value in group
               </Typography>
             </Box>
           </SubSection>
