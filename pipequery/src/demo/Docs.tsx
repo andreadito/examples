@@ -308,6 +308,7 @@ const NAV_SECTIONS = [
   { id: 'builder-component', label: 'Query Builder' },
   { id: 'performance', label: 'Performance' },
   { id: 'error-handling', label: 'Error Handling' },
+  { id: 'editor-integration', label: 'Editor Integration' },
 ];
 
 function SideNav({ active }: { active: string }) {
@@ -1651,6 +1652,96 @@ try {
     console.error('Runtime error:', err.message);
   }
 }`}</CodeBlock>
+        </Section>
+
+        {/* ── Editor Integration ─────────────────────────────────────── */}
+        <Section id="editor-integration" title="Editor Integration">
+          <Typography sx={{ fontSize: '0.85rem', color: '#8899aa', lineHeight: 1.6, mb: 3 }}>
+            PipeQuery ships syntax highlighting definitions for three popular editors.
+            Each module provides keyword, function, operator, string, and number highlighting
+            with the same color palette used in this documentation.
+          </Typography>
+
+          <SubSection title="CodeMirror 6">
+            <Typography sx={{ fontSize: '0.82rem', color: '#8899aa', lineHeight: 1.5, mb: 1.5 }}>
+              Use the <code>pipeQuery()</code> function to add PipeQuery language support
+              to any CodeMirror 6 editor. It provides both tokenization and the matching
+              dark theme highlight style.
+            </Typography>
+            <CodeBlock lang="ts">{`import { EditorView, basicSetup } from 'codemirror';
+import { pipeQuery } from './highlighting/codemirror';
+
+const editor = new EditorView({
+  doc: 'orders | where(total > 100) | select(id, total)',
+  extensions: [basicSetup, pipeQuery()],
+  parent: document.getElementById('editor')!,
+});`}</CodeBlock>
+            <Typography sx={{ fontSize: '0.78rem', color: '#667788', mt: 1 }}>
+              Requires: <code>@codemirror/language</code>, <code>@codemirror/state</code>,{' '}
+              <code>@codemirror/view</code>, <code>@lezer/highlight</code>
+            </Typography>
+          </SubSection>
+
+          <SubSection title="Monaco Editor (VS Code)">
+            <Typography sx={{ fontSize: '0.82rem', color: '#8899aa', lineHeight: 1.5, mb: 1.5 }}>
+              Register the PipeQuery language with your Monaco instance. This sets up
+              the Monarch tokenizer, language configuration (bracket matching, auto-closing),
+              and a matching dark theme.
+            </Typography>
+            <CodeBlock lang="ts">{`import * as monaco from 'monaco-editor';
+import { registerPipeQuery } from './highlighting/monaco';
+
+registerPipeQuery(monaco);
+
+const editor = monaco.editor.create(container, {
+  value: 'trades | groupBy(symbol) | select(symbol, vwap(price, volume))',
+  language: 'pipequery',
+  theme: 'pipequery-dark',
+});`}</CodeBlock>
+          </SubSection>
+
+          <SubSection title="IntelliJ / TextMate">
+            <Typography sx={{ fontSize: '0.82rem', color: '#8899aa', lineHeight: 1.5, mb: 1.5 }}>
+              A standard TextMate grammar is provided at{' '}
+              <code>highlighting/textmate/pipequery.tmLanguage.json</code>.
+              This works with IntelliJ (via TextMate bundles), VS Code (via extension),
+              and Sublime Text.
+            </Typography>
+            <CodeBlock lang="ts">{`// IntelliJ: Settings > Editor > TextMate Bundles > Add
+// Point to the directory containing pipequery.tmLanguage.json
+
+// VS Code extension (contributes.grammars in package.json):
+{
+  "contributes": {
+    "grammars": [{
+      "language": "pipequery",
+      "scopeName": "source.pipequery",
+      "path": "./pipequery.tmLanguage.json"
+    }]
+  }
+}`}</CodeBlock>
+          </SubSection>
+
+          <SubSection title="Token Categories">
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mb: 2 }}>
+              {[
+                { label: 'Keywords', color: '#c792ea', example: 'where, select, sort, as, desc' },
+                { label: 'Functions', color: '#ffcb6b', example: 'sum, avg, vwap, running_sum' },
+                { label: 'Fields', color: '#82aaff', example: 'price, user.name, _acc' },
+                { label: 'Strings', color: '#c3e88d', example: '"hello", \'world\'' },
+                { label: 'Numbers', color: '#f78c6c', example: '42, 3.14, 0' },
+                { label: 'Operators', color: '#89ddff', example: '|, >, ==, &&, +' },
+              ].map((t) => (
+                <Box key={t.label} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
+                  <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: t.color, flexShrink: 0 }} />
+                  <Typography sx={{ fontSize: '0.78rem', color: t.color, fontWeight: 600, minWidth: 70 }}>
+                    {t.label}
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.75rem', color: '#667788' }}>{t.example}</Typography>
+                </Box>
+              ))}
+            </Box>
+          </SubSection>
         </Section>
       </Box>
     </Box>
