@@ -10,7 +10,7 @@ import type {
   FunctionCall,
   SelectOp,
 } from './types.ts';
-import { RuntimeError } from './types.ts';
+import { RuntimeError, AGGREGATE_NAMES } from './types.ts';
 import {
   getFieldAccessor,
   compareValues,
@@ -29,9 +29,73 @@ import type { WindowDef } from './runtime.ts';
 type ExprFn = (row: RowData) => unknown;
 type OpFn = (data: RowData[], context: DataContext) => unknown;
 
-// ─── Expression Compiler ─────────────────────────────────────────────────────
+// ─── Aggregate Math Helpers ──────────────────────────────────────────────────
 
-const AGGREGATE_NAMES = new Set(['sum', 'avg', 'min', 'max', 'count']);
+function computeMedian(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function computePercentile(values: number[], p: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = (p / 100) * (sorted.length - 1);
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sorted[lo];
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+}
+
+function computeVariance(values: number[]): number {
+  if (values.length === 0) return 0;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  return values.reduce((acc, v) => acc + (v - mean) ** 2, 0) / values.length;
+}
+
+function computeStddev(values: number[]): number {
+  return Math.sqrt(computeVariance(values));
+}
+
+function computeSkew(values: number[]): number {
+  const n = values.length;
+  if (n < 3) return 0;
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const sd = computeStddev(values);
+  if (sd === 0) return 0;
+  return values.reduce((acc, v) => acc + ((v - mean) / sd) ** 3, 0) / n;
+}
+
+function computeKurt(values: number[]): number {
+  const n = values.length;
+  if (n < 4) return 0;
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const sd = computeStddev(values);
+  if (sd === 0) return 0;
+  return values.reduce((acc, v) => acc + ((v - mean) / sd) ** 4, 0) / n - 3;
+}
+
+function computeDrawdown(values: number[]): number {
+  if (values.length === 0) return 0;
+  let peak = values[0];
+  let maxDd = 0;
+  for (const v of values) {
+    if (v > peak) peak = v;
+    const dd = peak === 0 ? 0 : (v - peak) / peak;
+    if (dd < maxDd) maxDd = dd;
+  }
+  return maxDd;
+}
+
+function computeDownsideDeviation(values: number[], target: number = 0): number {
+  if (values.length === 0) return 0;
+  const downside = values.filter(v => v < target).map(v => (v - target) ** 2);
+  if (downside.length === 0) return 0;
+  return Math.sqrt(downside.reduce((a, b) => a + b, 0) / values.length);
+}
+
+// ─── Expression Compiler ─────────────────────────────────────────────────────
 
 const WINDOW_FUNCTION_NAMES = new Set([
   'running_sum', 'running_avg', 'running_count',
@@ -195,8 +259,13 @@ function compileFunctionCall(expr: FunctionCall, grouped: boolean): ExprFn {
 
 function compileGroupAggregate(name: string, args: Expression[]): ExprFn {
   const fieldFn = args.length > 0 ? compileExpression(args[0], false) : undefined;
+  const secondFn = args.length > 1 ? compileExpression(args[1], false) : undefined;
+
+  const extractValues = (row: RowData): number[] =>
+    ((row as RowData)._group as RowData[]).map(r => Number(fieldFn!(r)));
 
   switch (name) {
+    // ── Core ───────────────────────────────────────────────
     case 'sum':
       return (row) => {
         const group = (row as RowData)._group as RowData[];
@@ -232,6 +301,118 @@ function compileGroupAggregate(name: string, args: Expression[]): ExprFn {
         const group = (row as RowData)._group as RowData[];
         return group.length;
       };
+
+    // ── Statistical ───────────────────────────────────────
+    case 'median':
+      return (row) => computeMedian(extractValues(row));
+    case 'stddev':
+      return (row) => computeStddev(extractValues(row));
+    case 'var':
+      return (row) => computeVariance(extractValues(row));
+    case 'percentile':
+      return (row) => computePercentile(extractValues(row), Number(secondFn!(row)));
+    case 'skew':
+      return (row) => computeSkew(extractValues(row));
+    case 'kurt':
+      return (row) => computeKurt(extractValues(row));
+
+    // ── Finance ───────────────────────────────────────────
+    case 'vwap':
+      return (row) => {
+        const group = (row as RowData)._group as RowData[];
+        let sumPV = 0, sumV = 0;
+        for (const r of group) {
+          const p = Number(fieldFn!(r));
+          const v = Number(secondFn!(r));
+          sumPV += p * v; sumV += v;
+        }
+        return sumV === 0 ? 0 : sumPV / sumV;
+      };
+    case 'wavg':
+      return (row) => {
+        const group = (row as RowData)._group as RowData[];
+        let sumWV = 0, sumW = 0;
+        for (const r of group) {
+          const val = Number(fieldFn!(r));
+          const w = Number(secondFn!(r));
+          sumWV += val * w; sumW += w;
+        }
+        return sumW === 0 ? 0 : sumWV / sumW;
+      };
+    case 'drawdown':
+      return (row) => computeDrawdown(extractValues(row));
+
+    // ── Ratios ────────────────────────────────────────────
+    case 'pct':
+      // Returns the group sum — the division by grand total happens in the select pipeline
+      // In grouped context, pct produces the group sum that will be normalized later
+      return (row) => {
+        const group = (row as RowData)._group as RowData[];
+        return group.reduce((acc, r) => acc + Number(fieldFn!(r)), 0);
+      };
+    case 'sharpe':
+      return (row) => {
+        const vals = extractValues(row);
+        if (vals.length === 0) return 0;
+        const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+        const sd = computeStddev(vals);
+        return sd === 0 ? 0 : mean / sd;
+      };
+    case 'calmar':
+      return (row) => {
+        const vals = extractValues(row);
+        if (vals.length === 0) return 0;
+        const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+        const dd = Math.abs(computeDrawdown(vals));
+        return dd === 0 ? 0 : mean / dd;
+      };
+    case 'sortino':
+      return (row) => {
+        const vals = extractValues(row);
+        if (vals.length === 0) return 0;
+        const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+        const dsd = computeDownsideDeviation(vals, 0);
+        return dsd === 0 ? 0 : mean / dsd;
+      };
+    case 'info_ratio':
+      return (row) => {
+        const group = (row as RowData)._group as RowData[];
+        const excess = group.map(r => Number(fieldFn!(r)) - Number(secondFn!(r)));
+        if (excess.length === 0) return 0;
+        const mean = excess.reduce((a, b) => a + b, 0) / excess.length;
+        const sd = computeStddev(excess);
+        return sd === 0 ? 0 : mean / sd;
+      };
+
+    // ── Counting ──────────────────────────────────────────
+    case 'distinct_count':
+      return (row) => {
+        const group = (row as RowData)._group as RowData[];
+        return new Set(group.map(r => fieldFn!(r))).size;
+      };
+    case 'sum_abs':
+      return (row) => {
+        const group = (row as RowData)._group as RowData[];
+        return group.reduce((acc, r) => acc + Math.abs(Number(fieldFn!(r))), 0);
+      };
+    case 'abs_sum':
+      return (row) => {
+        const group = (row as RowData)._group as RowData[];
+        return Math.abs(group.reduce((acc, r) => acc + Number(fieldFn!(r)), 0));
+      };
+
+    // ── Range ─────────────────────────────────────────────
+    case 'first_value':
+      return (row) => {
+        const group = (row as RowData)._group as RowData[];
+        return group.length > 0 ? fieldFn!(group[0]) : null;
+      };
+    case 'last_value':
+      return (row) => {
+        const group = (row as RowData)._group as RowData[];
+        return group.length > 0 ? fieldFn!(group[group.length - 1]) : null;
+      };
+
     default:
       throw new RuntimeError(`Unknown aggregate function: ${name}`);
   }
@@ -405,8 +586,34 @@ function compileOperation(op: Operation, isGrouped: boolean): { fn: OpFn; produc
         const name = resolveFieldName(a);
         return { fn, name };
       });
+      // Detect which aggregate columns use pct() so we can normalize after rollup
+      const pctCols = new Set<string>();
+      for (const a of op.aggregates) {
+        const expr = a.kind === 'AliasExpr' ? (a as AliasExpr).expression : a;
+        if (expr.kind === 'FunctionCall' && (expr as FunctionCall).name === 'pct') {
+          pctCols.add(resolveFieldName(a));
+        }
+      }
       return {
-        fn: (data) => rollupFn(data, keyFns, aggFns),
+        fn: (data) => {
+          const results = rollupFn(data, keyFns, aggFns);
+          if (pctCols.size > 0) {
+            // Grand total row is the one with _rollupLevel === numKeys (all keys null)
+            const numKeys = keyFns.length;
+            const grandRow = results.find(r => r._rollupLevel === numKeys);
+            for (const col of pctCols) {
+              const total = Number(grandRow?.[col]) || 1;
+              for (const row of results) {
+                row[col] = (Number(row[col]) / total) * 100;
+              }
+            }
+            // If every aggregate is pct, the grand total row (100%) is redundant — remove it
+            if (pctCols.size === aggFns.length) {
+              return results.filter(r => r._rollupLevel !== numKeys);
+            }
+          }
+          return results;
+        },
         producesGrouped: false,
       };
     }
@@ -463,30 +670,118 @@ function compileOperation(op: Operation, isGrouped: boolean): { fn: OpFn; produc
     }
 
     case 'AggregateOp': {
-      const fieldFn = op.field ? compileExpression(op.field) : undefined;
+      const argFns = op.args?.map(a => compileExpression(a));
+      const primaryFn = argFns ? argFns[0] : (op.field ? compileExpression(op.field) : undefined);
+      const secondFn = argFns ? argFns[1] : undefined;
       const aggName = op.function;
       return {
         fn: (data) => {
+          const vals = () => data.map(row => Number(primaryFn!(row)));
           switch (aggName) {
+            // ── Core ──────────────────────────────────────
             case 'count':
               return data.length;
             case 'sum':
-              return data.reduce((acc, row) => acc + Number(fieldFn!(row)), 0);
+              return data.reduce((acc, row) => acc + Number(primaryFn!(row)), 0);
             case 'avg': {
               if (data.length === 0) return 0;
-              const total = data.reduce((acc, row) => acc + Number(fieldFn!(row)), 0);
+              const total = data.reduce((acc, row) => acc + Number(primaryFn!(row)), 0);
               return total / data.length;
             }
             case 'min':
               return data.reduce((min, row) => {
-                const val = fieldFn!(row) as number;
+                const val = primaryFn!(row) as number;
                 return val < (min as number) ? val : min;
-              }, fieldFn!(data[0]));
+              }, primaryFn!(data[0]));
             case 'max':
               return data.reduce((max, row) => {
-                const val = fieldFn!(row) as number;
+                const val = primaryFn!(row) as number;
                 return val > (max as number) ? val : max;
-              }, fieldFn!(data[0]));
+              }, primaryFn!(data[0]));
+
+            // ── Statistical ───────────────────────────────
+            case 'median':
+              return computeMedian(vals());
+            case 'stddev':
+              return computeStddev(vals());
+            case 'var':
+              return computeVariance(vals());
+            case 'percentile':
+              return computePercentile(vals(), Number(secondFn!(data[0])));
+            case 'skew':
+              return computeSkew(vals());
+            case 'kurt':
+              return computeKurt(vals());
+
+            // ── Finance ───────────────────────────────────
+            case 'vwap': {
+              let sumPV = 0, sumV = 0;
+              for (const row of data) {
+                const p = Number(primaryFn!(row));
+                const v = Number(secondFn!(row));
+                sumPV += p * v; sumV += v;
+              }
+              return sumV === 0 ? 0 : sumPV / sumV;
+            }
+            case 'wavg': {
+              let sumWV = 0, sumW = 0;
+              for (const row of data) {
+                const val = Number(primaryFn!(row));
+                const w = Number(secondFn!(row));
+                sumWV += val * w; sumW += w;
+              }
+              return sumW === 0 ? 0 : sumWV / sumW;
+            }
+            case 'drawdown':
+              return computeDrawdown(vals());
+
+            // ── Ratios ────────────────────────────────────
+            case 'pct': {
+              // Standalone pct returns sum (= 100% of itself)
+              return data.reduce((acc, row) => acc + Number(primaryFn!(row)), 0);
+            }
+            case 'sharpe': {
+              const v = vals();
+              if (v.length === 0) return 0;
+              const mean = v.reduce((a, b) => a + b, 0) / v.length;
+              const sd = computeStddev(v);
+              return sd === 0 ? 0 : mean / sd;
+            }
+            case 'calmar': {
+              const v = vals();
+              if (v.length === 0) return 0;
+              const mean = v.reduce((a, b) => a + b, 0) / v.length;
+              const dd = Math.abs(computeDrawdown(v));
+              return dd === 0 ? 0 : mean / dd;
+            }
+            case 'sortino': {
+              const v = vals();
+              if (v.length === 0) return 0;
+              const mean = v.reduce((a, b) => a + b, 0) / v.length;
+              const dsd = computeDownsideDeviation(v, 0);
+              return dsd === 0 ? 0 : mean / dsd;
+            }
+            case 'info_ratio': {
+              const excess = data.map(row => Number(primaryFn!(row)) - Number(secondFn!(row)));
+              if (excess.length === 0) return 0;
+              const mean = excess.reduce((a, b) => a + b, 0) / excess.length;
+              const sd = computeStddev(excess);
+              return sd === 0 ? 0 : mean / sd;
+            }
+
+            // ── Counting ──────────────────────────────────
+            case 'distinct_count':
+              return new Set(data.map(row => primaryFn!(row))).size;
+            case 'sum_abs':
+              return data.reduce((acc, row) => acc + Math.abs(Number(primaryFn!(row))), 0);
+            case 'abs_sum':
+              return Math.abs(data.reduce((acc, row) => acc + Number(primaryFn!(row)), 0));
+
+            // ── Range ─────────────────────────────────────
+            case 'first_value':
+              return data.length > 0 ? primaryFn!(data[0]) : null;
+            case 'last_value':
+              return data.length > 0 ? primaryFn!(data[data.length - 1]) : null;
           }
         },
         producesGrouped: false,

@@ -6,10 +6,9 @@ import type {
   Pipeline,
   FieldAccess,
   AliasExpr,
+  AggregateFnName,
 } from './types.ts';
-import { ParseError } from './types.ts';
-
-const AGGREGATE_NAMES = new Set(['sum', 'avg', 'min', 'max', 'count']);
+import { ParseError, AGGREGATE_NAMES, TWO_ARG_AGGREGATES } from './types.ts';
 
 export function parse(tokens: Token[]): Pipeline {
   let pos = 0;
@@ -398,13 +397,21 @@ export function parse(tokens: Token[]): Pipeline {
       }
 
       default: {
-        // Check if it's a standalone aggregate: sum, avg, min, max, count
+        // Check if it's a standalone aggregate
         if (AGGREGATE_NAMES.has(name)) {
-          let field: Expression | undefined;
-          if (peek().type !== 'RPAREN') {
-            field = parseOrExpr();
+          if (TWO_ARG_AGGREGATES.has(name)) {
+            const args: Expression[] = [];
+            args.push(parseOrExpr());
+            expect('COMMA', `after first argument of ${name}`);
+            args.push(parseOrExpr());
+            op = { kind: 'AggregateOp', function: name as AggregateFnName, args };
+          } else {
+            let field: Expression | undefined;
+            if (peek().type !== 'RPAREN') {
+              field = parseOrExpr();
+            }
+            op = { kind: 'AggregateOp', function: name as AggregateFnName, field };
           }
-          op = { kind: 'AggregateOp', function: name as 'sum' | 'avg' | 'min' | 'max' | 'count', field };
           break;
         }
         throw new ParseError(
