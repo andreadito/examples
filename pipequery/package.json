@@ -20,7 +20,11 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@codemirror/language": "^6.12.2",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.40.0",
     "@eslint/js": "^9.39.1",
+    "@lezer/highlight": "^1.2.3",
     "@types/lodash-es": "^4.17.12",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
