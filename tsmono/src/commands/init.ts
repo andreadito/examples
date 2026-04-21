@@ -43,7 +43,10 @@ export function init(cwd: string, target?: string): number {
     ) + '\n',
   );
 
-  writeIfAbsent(join(dir, '.gitignore'), ['node_modules', 'dist', ''].join('\n'));
+  writeIfAbsent(
+    join(dir, '.gitignore'),
+    ['node_modules', 'dist', '.tsmono-cache', ''].join('\n'),
+  );
 
   writeIfAbsent(
     join(dir, 'apps', '.gitkeep'),

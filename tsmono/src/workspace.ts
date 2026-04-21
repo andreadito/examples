@@ -3,6 +3,10 @@ import { join, resolve } from 'node:path';
 
 export type WorkspaceKind = 'app' | 'package';
 
+export interface TsmonoConfig {
+  outputs?: Record<string, string[]>;
+}
+
 export interface PackageJson {
   name?: string;
   version?: string;
@@ -12,6 +16,7 @@ export interface PackageJson {
   devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
+  tsmono?: TsmonoConfig;
 }
 
 export interface Workspace {

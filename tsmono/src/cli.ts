@@ -6,6 +6,7 @@ import { init } from './commands/init.js';
 import { why } from './commands/why.js';
 import { syncTsconfig } from './commands/sync.js';
 import { affectedCmd } from './commands/affected.js';
+import { cacheClear, cacheInfo } from './commands/cache.js';
 import { resolveRef } from './git.js';
 
 const HELP = `tsmono — a tiny TypeScript monorepo helper
@@ -27,9 +28,13 @@ Commands:
       --affected [--base REF]         only run in workspaces affected since REF
                                       (default: origin/main, falls back to main)
       --untracked                     include untracked files in --affected
+      --no-cache                      disable output caching
+      --force                         ignore cache hits (re-run and overwrite)
   tsmono affected [--base REF] [--json]   list workspaces affected since REF
   tsmono why <workspace>           show a workspace's deps grouped by source
   tsmono sync-tsconfig [--check]   sync tsconfig project references to the workspace graph
+  tsmono cache info                show cached entries with sizes
+  tsmono cache clear               delete the local cache dir
   tsmono --help                    show this help
 
 Exit codes:
@@ -74,7 +79,12 @@ export function main(argv: string[]): number {
             includeUntracked: opts.includes('--untracked'),
           }
         : undefined;
-      return run(cwd, script, { filter, affected });
+      return run(cwd, script, {
+        filter,
+        affected,
+        noCache: opts.includes('--no-cache'),
+        force: opts.includes('--force'),
+      });
     }
     case 'affected': {
       return affectedCmd(cwd, {
@@ -93,6 +103,13 @@ export function main(argv: string[]): number {
     }
     case 'sync-tsconfig':
       return syncTsconfig(cwd, { check: rest.includes('--check') });
+    case 'cache': {
+      const sub = rest[0];
+      if (sub === 'clear') return cacheClear(cwd);
+      if (sub === 'info' || sub === undefined) return cacheInfo(cwd);
+      console.error('usage: tsmono cache [info|clear]');
+      return 2;
+    }
     default:
       console.error(`unknown command: ${cmd}`);
       process.stdout.write(HELP);

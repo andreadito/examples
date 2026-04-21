@@ -3,10 +3,20 @@ import { loadRoot } from '../workspace.js';
 import { buildGraph, findCycles, topoOrder } from '../graph.js';
 import { changedFiles } from '../git.js';
 import { computeAffected } from '../affected.js';
+import {
+  cacheHit,
+  cacheKey,
+  makeEntry,
+  restoreCache,
+  storeCache,
+  workspaceOutputs,
+} from '../cache.js';
 
 export interface RunOptions {
   filter?: string[];
   affected?: { base: string; includeUntracked?: boolean };
+  noCache?: boolean;
+  force?: boolean;
 }
 
 export function run(cwd: string, script: string, opts: RunOptions = {}): number {
@@ -59,8 +69,27 @@ export function run(cwd: string, script: string, opts: RunOptions = {}): number 
     return 0;
   }
 
+  const keyMemo = new Map<string, string>();
+  let hits = 0;
+  let misses = 0;
+
   for (const name of targets) {
     const ws = g.nodes.get(name)!;
+    const outputs = workspaceOutputs(ws, script);
+    const useCache = !opts.noCache && outputs.length > 0;
+
+    let entry: ReturnType<typeof makeEntry> | null = null;
+    if (useCache) {
+      const key = cacheKey(root, g, ws, script, keyMemo);
+      entry = makeEntry(root, key, outputs);
+      if (!opts.force && cacheHit(entry)) {
+        console.log(`\n> ${name} :: cache hit (${key.slice(0, 10)})`);
+        restoreCache(ws, entry);
+        hits++;
+        continue;
+      }
+    }
+
     console.log(`\n> ${name} :: npm run ${script}`);
     const res = spawnSync('npm', ['run', script], {
       cwd: ws.dir,
@@ -72,9 +101,16 @@ export function run(cwd: string, script: string, opts: RunOptions = {}): number 
       );
       return res.status ?? 1;
     }
+    misses++;
+    if (useCache && entry) {
+      storeCache(ws, entry, script);
+      console.log(`  cached as ${entry.key.slice(0, 10)}`);
+    }
   }
-  console.log(
-    `\nOK: ran "${script}" in ${targets.length} workspace${targets.length === 1 ? '' : 's'}`,
-  );
+
+  const summary = opts.noCache
+    ? `${targets.length} workspace${targets.length === 1 ? '' : 's'}`
+    : `${targets.length} (${hits} cached, ${misses} ran)`;
+  console.log(`\nOK: ran "${script}" in ${summary}`);
   return 0;
 }
