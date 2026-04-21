@@ -5,6 +5,8 @@ import { run } from './commands/run.js';
 import { init } from './commands/init.js';
 import { why } from './commands/why.js';
 import { syncTsconfig } from './commands/sync.js';
+import { affectedCmd } from './commands/affected.js';
+import { resolveRef } from './git.js';
 
 const HELP = `tsmono — a tiny TypeScript monorepo helper
 
@@ -20,7 +22,12 @@ Commands:
   tsmono list                      list all workspaces
   tsmono graph [--json]            print the workspace dependency graph
   tsmono check                     detect circular deps and version conflicts
-  tsmono run <script> [--only A,B] run <script> in each workspace, in topo order
+  tsmono run <script> [flags]      run <script> in each workspace, in topo order
+      --only A,B                      restrict to the listed workspaces
+      --affected [--base REF]         only run in workspaces affected since REF
+                                      (default: origin/main, falls back to main)
+      --untracked                     include untracked files in --affected
+  tsmono affected [--base REF] [--json]   list workspaces affected since REF
   tsmono why <workspace>           show a workspace's deps grouped by source
   tsmono sync-tsconfig [--check]   sync tsconfig project references to the workspace graph
   tsmono --help                    show this help
@@ -53,7 +60,7 @@ export function main(argv: string[]): number {
     case 'run': {
       const [script, ...opts] = rest;
       if (!script) {
-        console.error('usage: tsmono run <script> [--only a,b]');
+        console.error('usage: tsmono run <script> [--only a,b] [--affected [--base REF] [--untracked]]');
         return 2;
       }
       const onlyIdx = opts.indexOf('--only');
@@ -61,7 +68,20 @@ export function main(argv: string[]): number {
         onlyIdx >= 0 && opts[onlyIdx + 1]
           ? opts[onlyIdx + 1]!.split(',').map((s) => s.trim()).filter(Boolean)
           : undefined;
-      return run(cwd, script, { filter });
+      const affected = opts.includes('--affected')
+        ? {
+            base: pickBase(opts, cwd),
+            includeUntracked: opts.includes('--untracked'),
+          }
+        : undefined;
+      return run(cwd, script, { filter, affected });
+    }
+    case 'affected': {
+      return affectedCmd(cwd, {
+        base: pickBase(rest, cwd),
+        includeUntracked: rest.includes('--untracked'),
+        json: rest.includes('--json'),
+      });
     }
     case 'why': {
       const name = rest[0];
@@ -78,6 +98,15 @@ export function main(argv: string[]): number {
       process.stdout.write(HELP);
       return 2;
   }
+}
+
+function pickBase(args: string[], cwd: string): string {
+  const i = args.indexOf('--base');
+  if (i >= 0 && args[i + 1]) return args[i + 1]!;
+  for (const candidate of ['origin/main', 'main', 'HEAD~1']) {
+    if (resolveRef(cwd, candidate)) return candidate;
+  }
+  return 'HEAD';
 }
 
 export function runCli(): void {
