@@ -1,0 +1,5 @@
+{
+  "name": "cycle-fixture",
+  "private": true,
+  "workspaces": ["packages/*"]
+}

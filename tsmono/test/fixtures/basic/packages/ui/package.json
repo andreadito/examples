@@ -1,0 +1,8 @@
+{
+  "name": "@fixture/ui",
+  "private": true,
+  "scripts": { "build": "echo ui-build" },
+  "dependencies": {
+    "@fixture/utils": "*"
+  }
+}

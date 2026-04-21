@@ -1,0 +1,27 @@
+{
+  "name": "tsmono",
+  "version": "0.1.0",
+  "description": "A tiny TypeScript monorepo helper: workspace discovery, dependency graph, cycle detection, topological task runner.",
+  "type": "module",
+  "bin": {
+    "tsmono": "bin/tsmono.mjs"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "build:test": "tsc -p tsconfig.test.json",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build:test && node --test dist-test/test/*.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

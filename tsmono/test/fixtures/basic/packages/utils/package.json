@@ -1,0 +1,8 @@
+{
+  "name": "@fixture/utils",
+  "private": true,
+  "scripts": { "build": "echo utils-build" },
+  "dependencies": {
+    "zod": "^3.23.0"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@fixture/web",
+  "private": true,
+  "scripts": { "build": "echo web-build" },
+  "dependencies": {
+    "@fixture/ui": "*",
+    "@fixture/utils": "*",
+    "react": "^18.3.0"
+  }
+}

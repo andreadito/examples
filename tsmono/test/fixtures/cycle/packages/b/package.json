@@ -1,0 +1,7 @@
+{
+  "name": "@cycle/b",
+  "private": true,
+  "dependencies": {
+    "@cycle/a": "*"
+  }
+}
