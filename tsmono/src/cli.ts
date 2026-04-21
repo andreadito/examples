@@ -4,6 +4,7 @@ import { check } from './commands/check.js';
 import { run } from './commands/run.js';
 import { init } from './commands/init.js';
 import { why } from './commands/why.js';
+import { syncTsconfig } from './commands/sync.js';
 
 const HELP = `tsmono — a tiny TypeScript monorepo helper
 
@@ -21,6 +22,7 @@ Commands:
   tsmono check                     detect circular deps and version conflicts
   tsmono run <script> [--only A,B] run <script> in each workspace, in topo order
   tsmono why <workspace>           show a workspace's deps grouped by source
+  tsmono sync-tsconfig [--check]   sync tsconfig project references to the workspace graph
   tsmono --help                    show this help
 
 Exit codes:
@@ -69,6 +71,8 @@ export function main(argv: string[]): number {
       }
       return why(cwd, name);
     }
+    case 'sync-tsconfig':
+      return syncTsconfig(cwd, { check: rest.includes('--check') });
     default:
       console.error(`unknown command: ${cmd}`);
       process.stdout.write(HELP);
