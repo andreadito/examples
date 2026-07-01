@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TabFM realtime scoring</title>
+  <script src="./chart.umd.min.js"></script>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 24px;
+           max-width: 900px; margin-inline: auto; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: #888; margin: 0 0 20px; }
+    .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
+    .stat { margin-left: auto; color: #888; font-variant-numeric: tabular-nums; }
+    button { font: inherit; padding: 6px 14px; border: 1px solid #8884;
+             border-radius: 8px; background: transparent; cursor: pointer; }
+    button.active { background: #4f8cff22; border-color: #4f8cff; }
+    .view { display: none; }
+    .view.active { display: block; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid #8882;
+             font-variant-numeric: tabular-nums; }
+    th:nth-child(3), td:nth-child(3) { text-align: left; }
+    .pill { padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+    .high { background: #1a7f3722; color: #1a7f37; }
+    .low  { background: #c035202a; color: #c03520; }
+    tr.flash { animation: flash 0.8s ease-out; }
+    @keyframes flash { from { background: #4f8cff33; } to { background: transparent; } }
+  </style>
+</head>
+<body>
+  <h1>TabFM realtime scoring</h1>
+  <p class="sub">Rows land in a SQL table &rarr; the scoring loop predicts each micro-batch &rarr; results stream here live.</p>
+
+  <div class="bar">
+    <button id="tab-chart" class="active">Line chart</button>
+    <button id="tab-table">Table</button>
+    <span class="stat" id="stat">waiting for data&hellip;</span>
+  </div>
+
+  <div id="view-chart" class="view active">
+    <canvas id="chart" height="140"></canvas>
+  </div>
+
+  <div id="view-table" class="view">
+    <table>
+      <thead>
+        <tr><th>id</th><th>amount</th><th>region</th><th>prediction</th><th>proba</th></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    const MAX_POINTS = 60, MAX_ROWS = 20;
+    let count = 0;
+
+    // --- tabs ---
+    const views = { chart: document.getElementById('view-chart'),
+                    table: document.getElementById('view-table') };
+    const tabs = { chart: document.getElementById('tab-chart'),
+                   table: document.getElementById('tab-table') };
+    function show(name) {
+      for (const k in views) {
+        views[k].classList.toggle('active', k === name);
+        tabs[k].classList.toggle('active', k === name);
+      }
+    }
+    tabs.chart.onclick = () => show('chart');
+    tabs.table.onclick = () => show('table');
+
+    // --- chart ---
+    const green = '#1a7f37', red = '#c03520';
+    const chart = new Chart(document.getElementById('chart'), {
+      type: 'line',
+      data: { labels: [], datasets: [{
+        label: 'amount', data: [], tension: 0.3, borderColor: '#4f8cff',
+        pointRadius: 4,
+        pointBackgroundColor: [], pointBorderColor: [],
+      }]},
+      options: {
+        animation: false,
+        scales: { x: { title: { display: true, text: 'row id' } } },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: {
+            afterLabel: (c) => `prediction: ${c.raw.pred}  (p=${c.raw.proba.toFixed(3)})`,
+          }},
+        },
+      },
+    });
+
+    function pushChart(row) {
+      const ds = chart.data.datasets[0];
+      const color = row.prediction === 'high' ? green : red;
+      chart.data.labels.push(row.id);
+      ds.data.push({ x: row.id, y: row.amount, pred: row.prediction, proba: row.proba });
+      ds.pointBackgroundColor.push(color);
+      ds.pointBorderColor.push(color);
+      if (ds.data.length > MAX_POINTS) {
+        chart.data.labels.shift();
+        ds.data.shift(); ds.pointBackgroundColor.shift(); ds.pointBorderColor.shift();
+      }
+      chart.update();
+    }
+
+    // --- table ---
+    const tbody = document.getElementById('tbody');
+    function pushTable(row) {
+      const tr = document.createElement('tr');
+      tr.className = 'flash';
+      const cls = row.prediction === 'high' ? 'high' : 'low';
+      tr.innerHTML = `<td>${row.id}</td><td>${row.amount.toFixed(1)}</td>` +
+        `<td>${row.region}</td>` +
+        `<td><span class="pill ${cls}">${row.prediction}</span></td>` +
+        `<td>${row.proba.toFixed(3)}</td>`;
+      tbody.prepend(tr);
+      while (tbody.children.length > MAX_ROWS) tbody.lastChild.remove();
+    }
+
+    // --- stream ---
+    const stat = document.getElementById('stat');
+    const es = new EventSource('/events');
+    es.onmessage = (e) => {
+      const row = JSON.parse(e.data);
+      count++;
+      stat.textContent = `${count} rows scored`;
+      pushChart(row);
+      pushTable(row);
+    };
+    es.onerror = () => { stat.textContent = 'disconnected — is the server running?'; };
+  </script>
+</body>
+</html>
