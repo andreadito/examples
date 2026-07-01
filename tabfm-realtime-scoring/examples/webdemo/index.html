@@ -12,7 +12,13 @@
     h1 { font-size: 20px; margin: 0 0 4px; }
     .sub { color: #888; margin: 0 0 20px; }
     .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
-    .stat { margin-left: auto; color: #888; font-variant-numeric: tabular-nums; }
+    .stat { color: #888; font-variant-numeric: tabular-nums; }
+    .chip { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+            font-variant-numeric: tabular-nums; }
+    #mode { background: #8f8f8f22; color: #888; }
+    .pending { background: #d9880022; color: #b5730a; transition: background .3s, color .3s; }
+    .pending.zero { background: #1a7f3722; color: #1a7f37; }
+    #pending { margin-left: auto; }
     button { font: inherit; padding: 6px 14px; border: 1px solid #8884;
              border-radius: 8px; background: transparent; cursor: pointer; }
     button.active { background: #4f8cff22; border-color: #4f8cff; }
@@ -36,6 +42,8 @@
   <div class="bar">
     <button id="tab-chart" class="active">Line chart</button>
     <button id="tab-table">Table</button>
+    <span class="chip" id="mode">predictor: &hellip;</span>
+    <span class="chip pending zero" id="pending">0 pending</span>
     <span class="stat" id="stat">waiting for data&hellip;</span>
   </div>
 
@@ -121,14 +129,24 @@
 
     // --- stream ---
     const stat = document.getElementById('stat');
+    const pendingEl = document.getElementById('pending');
+    const modeEl = document.getElementById('mode');
     const es = new EventSource('/events');
-    es.onmessage = (e) => {
+
+    es.addEventListener('row', (e) => {
       const row = JSON.parse(e.data);
-      count++;
-      stat.textContent = `${count} rows scored`;
       pushChart(row);
       pushTable(row);
-    };
+    });
+
+    es.addEventListener('stats', (e) => {
+      const s = JSON.parse(e.data);
+      stat.textContent = `${s.scored} rows scored`;
+      modeEl.textContent = `predictor: ${s.mode}`;
+      pendingEl.textContent = `${s.pending} pending`;
+      pendingEl.classList.toggle('zero', s.pending === 0);
+    });
+
     es.onerror = () => { stat.textContent = 'disconnected — is the server running?'; };
   </script>
 </body>

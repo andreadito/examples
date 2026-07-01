@@ -77,6 +77,22 @@ python examples/webdemo/server.py
 # open http://127.0.0.1:8000
 ```
 
+The header shows a **pending** chip (rows waiting in the queue) that turns amber
+and spikes when a burst of rows lands, then drains back to green as the loop
+catches up — a live view of throughput vs. arrival rate.
+
+**Run it with the real TabFM model** instead of the mock predictor (uses the
+bundled `context.csv` as in-context examples; downloads weights on first run):
+
+```bash
+pip install -e '.[dev,tabfm]'
+USE_TABFM=1 python examples/webdemo/server.py     # BACKEND=pytorch also works
+```
+
+If TabFM is not installed it logs a warning and falls back to the mock, so the
+demo always runs. The predictor in use is shown in the header (`mock` /
+`tabfm:jax`).
+
 Point `DB_URL` in `examples/webdemo/server.py` at a `postgresql+psycopg://...`
 URL and remove the writer thread to visualise a real Postgres table instead.
 
