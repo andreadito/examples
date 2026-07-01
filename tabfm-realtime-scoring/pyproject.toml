@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tabfm-realtime-scoring"
+version = "0.1.0"
+description = "Near-real-time scoring loop that runs TabFM predictions over rows landing in a SQL table."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.0",
+    "SQLAlchemy>=2.0",
+]
+
+[project.optional-dependencies]
+# Postgres driver (the primary target backend).
+postgres = ["psycopg[binary]>=3.1"]
+# The actual TabFM foundation model (installed from source -- it is not on
+# PyPI). Without this the loop falls back to a deterministic MockPredictor so
+# the demo and tests run with zero downloads.
+tabfm = ["tabfm[jax] @ git+https://github.com/google-research/tabfm.git"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+tabfm-score = "tabfm_realtime.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
