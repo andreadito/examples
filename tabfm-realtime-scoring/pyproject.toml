@@ -17,9 +17,10 @@ dependencies = [
 [project.optional-dependencies]
 # Postgres driver (the primary target backend).
 postgres = ["psycopg[binary]>=3.1"]
-# The actual TabFM foundation model. Without this the loop falls back to a
-# deterministic MockPredictor so the demo and tests run with zero downloads.
-tabfm = ["tabfm[jax]"]
+# The actual TabFM foundation model (installed from source -- it is not on
+# PyPI). Without this the loop falls back to a deterministic MockPredictor so
+# the demo and tests run with zero downloads.
+tabfm = ["tabfm[jax] @ git+https://github.com/google-research/tabfm.git"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]

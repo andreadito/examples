@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -30,6 +32,43 @@ HERE = Path(__file__).parent
 DB_URL = "sqlite:///./webdemo.db"
 FEATURES = ("amount", "region")
 HOST, PORT = "127.0.0.1", 8000
+# Small batch + occasional bursts from the writer make the pending queue
+# visibly build up and drain in the UI.
+BATCH_SIZE = 8
+
+
+def build_predictor():
+    """Pick the demo predictor, honouring USE_TABFM. Returns (predictor, mode).
+
+    ``USE_TABFM=1`` loads the real TabFM model from Hugging Face using the
+    bundled ``context.csv`` as in-context examples; anything else (or a missing
+    TabFM install) falls back to the deterministic MockPredictor.
+    """
+    mock = MockPredictor("amount", threshold=0.0, positive="high", negative="low")
+    if os.environ.get("USE_TABFM", "").lower() not in {"1", "true", "yes"}:
+        return mock, "mock"
+    try:
+        import pandas as pd
+
+        import tabfm
+    except ImportError:
+        logging.warning("USE_TABFM set but tabfm not installed; using MockPredictor.")
+        return mock, "mock"
+
+    from tabfm_realtime.predictor import TabFMPredictor
+
+    backend = os.environ.get("BACKEND", "jax")
+    ctx = pd.read_csv(os.environ.get("CONTEXT_CSV", str(HERE / "context.csv")))
+    loader = getattr(tabfm, f"tabfm_v1_0_0_{backend}")
+    model = loader.load(model_type="classification")
+    predictor = TabFMPredictor(
+        model,
+        ctx[list(FEATURES)],
+        ctx["label"].to_numpy(),
+        batch_size=BATCH_SIZE,
+    )
+    logging.info("Loaded TabFM (%s) with %d context rows.", backend, len(ctx))
+    return predictor, f"tabfm:{backend}"
 
 
 def setup(engine) -> None:
@@ -52,20 +91,24 @@ def setup(engine) -> None:
 
 
 def stream_rows(engine, stop: threading.Event) -> None:
-    """Simulate a sine-ish stream of rows landing in the table over time."""
-    import math
+    """Simulate a sine-ish stream of rows landing in the table over time.
 
+    Every so often a *burst* of rows lands at once, so the pending queue
+    visibly spikes and then drains as the loop catches up.
+    """
     regions = ["us", "eu", "apac"]
     i = 0
     while not stop.is_set():
-        amount = round(80 * math.sin(i / 6.0) + (i * 13 % 40) - 20, 1)
+        burst = 25 if (i > 0 and i % 12 == 0) else 1
         with engine.begin() as conn:
-            conn.execute(
-                text("INSERT INTO observations (amount, region) VALUES (:a, :r)"),
-                {"a": amount, "r": regions[i % 3]},
-            )
-        i += 1
-        stop.wait(0.4)
+            for _ in range(burst):
+                amount = round(80 * math.sin(i / 6.0) + (i * 13 % 40) - 20, 1)
+                conn.execute(
+                    text("INSERT INTO observations (amount, region) VALUES (:a, :r)"),
+                    {"a": amount, "r": regions[i % 3]},
+                )
+                i += 1
+        stop.wait(0.5)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -96,6 +139,7 @@ class Handler(BaseHTTPRequestHandler):
 
         engine = self.server.engine  # type: ignore[attr-defined]
         stop = self.server.stop  # type: ignore[attr-defined]
+        mode = self.server.mode  # type: ignore[attr-defined]
         last_id = 0
         try:
             while not stop.is_set():
@@ -113,13 +157,28 @@ class Handler(BaseHTTPRequestHandler):
                         .mappings()
                         .all()
                     )
+                    pending = conn.execute(
+                        text(
+                            "SELECT count(*) FROM observations WHERE scored_at IS NULL"
+                        )
+                    ).scalar_one()
+                    scored = conn.execute(
+                        text(
+                            "SELECT count(*) FROM observations "
+                            "WHERE scored_at IS NOT NULL"
+                        )
+                    ).scalar_one()
                 for row in rows:
                     last_id = row["id"]
-                    self.wfile.write(f"data: {json.dumps(dict(row))}\n\n".encode())
-                    self.wfile.flush()
+                    self._sse("row", dict(row))
+                self._sse("stats", {"pending": pending, "scored": scored, "mode": mode})
                 stop.wait(0.4)
         except (BrokenPipeError, ConnectionResetError):
             pass  # browser tab closed
+
+    def _sse(self, event: str, payload: dict) -> None:
+        self.wfile.write(f"event: {event}\ndata: {json.dumps(payload)}\n\n".encode())
+        self.wfile.flush()
 
     def log_message(self, *args):  # keep the console focused on the loop
         pass
@@ -132,13 +191,13 @@ def main() -> None:
 
     cfg = TableConfig(table="observations", id_column="id", feature_columns=FEATURES)
     source = SqlDataSource(engine, cfg)
-    predictor = MockPredictor("amount", threshold=0.0, positive="high", negative="low")
+    predictor, mode = build_predictor()
     service = ScoringService(
         source,
         predictor,
         id_column="id",
         feature_columns=FEATURES,
-        batch_size=16,
+        batch_size=BATCH_SIZE,
         poll_interval=0.5,
     )
 
@@ -149,7 +208,8 @@ def main() -> None:
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     server.engine = engine  # type: ignore[attr-defined]
     server.stop = stop  # type: ignore[attr-defined]
-    print(f"Open http://{HOST}:{PORT}  (Ctrl-C to stop)")
+    server.mode = mode  # type: ignore[attr-defined]
+    print(f"Predictor: {mode}. Open http://{HOST}:{PORT}  (Ctrl-C to stop)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
