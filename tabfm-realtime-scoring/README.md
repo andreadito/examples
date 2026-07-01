@@ -64,6 +64,22 @@ python examples/demo_sqlite.py
 It creates a SQLite table, streams rows into it in the background, runs the loop
 for a few seconds, and prints the table with predictions filled in.
 
+## Live web demo (table + line chart)
+
+A single-page UI that streams each newly-scored row over Server-Sent Events so
+you can watch predictions land in real time — as a line chart (points coloured
+by prediction) or a table. Server side is pure standard library; Chart.js is
+vendored locally, so it runs fully offline with no model download.
+
+```bash
+pip install -e '.[dev]'
+python examples/webdemo/server.py
+# open http://127.0.0.1:8000
+```
+
+Point `DB_URL` in `examples/webdemo/server.py` at a `postgresql+psycopg://...`
+URL and remove the writer thread to visualise a real Postgres table instead.
+
 ## Run against Postgres
 
 1. Create the table (see [`examples/schema_postgres.sql`](examples/schema_postgres.sql)).
