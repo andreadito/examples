@@ -126,7 +126,7 @@ Keeping these generated from one source prevents drift.
 
 Server: `POST /api/claude` forwards `{ system, messages, tools, ... }` to the
 Anthropic Messages API and returns the raw response. It holds the API key, pins
-the allowed model (default `claude-sonnet-5`, overridable via env var, never by
+the allowed model (default `claude-opus-4-8`, overridable via env var, never by
 the client) and a `max_tokens` cap server-side (so the endpoint is not a free
 general-purpose proxy), and contains zero domain logic.
 
@@ -175,7 +175,8 @@ Live verification: run demo in browser, generate a UI, watch it tick.
 
 `@mui/material`, `@mui/x-chat`, `@mui/x-charts`, `@mui/x-data-grid`,
 `@json-render/core`, `@json-render/react`, `@json-render/jotai`, `jotai`
-(`xstate` + `@json-render/xstate` for the optional store),
+(`@xstate/store` + `@json-render/xstate` for the optional store — json-render's
+xstate adapter wraps XState Store, not state machines),
 `ag-grid-community` + `ag-grid-react`, `echarts` (thin custom wrapper, no
 `echarts-for-react`), `zod`, `express`, `@anthropic-ai/sdk` (server only),
 `vite`, `vitest`, `typescript`.
