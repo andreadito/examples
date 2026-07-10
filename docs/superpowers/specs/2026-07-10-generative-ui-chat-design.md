@@ -17,7 +17,9 @@ A reusable React component, `<GenerativeUIChat>`, that embeds an MUI X chat pane
 | Generation loop | Lives in the browser (inside the component) |
 | Streaming | None — single-shot JSON; iterate via follow-up chat turns |
 | State library | Pluggable `StateStore`; jotai default, xstate optional |
-| Catalog scope | Full kit: layout + display + MUI X Charts + DataGrid + inputs |
+| Catalog scope | Full kit: layout + display + MUI X Charts + DataGrid + inputs, plus AG Grid (Community) and ECharts finance components built in |
+| Styling | Token-constrained style props + validated `sx` subset (no Tailwind, no raw CSS) |
+| Extensibility | Public `extensions` prop + `defineCatalogComponent()` helper; consumers add any third-party component |
 | Impossible-request handling | Graceful refusal + validation/repair loop (1 retry) + whitelisted data transforms |
 | Render UX | Canvas + chat split inside the component; each edit replaces the canvas |
 | Demo data | Simulated live ticker (~12 positions, prices random-walk every ~1s) |
@@ -53,6 +55,7 @@ generative-ui-chat/
   onEvent={(name, payload) => ...}  // catalog actions: onSubmit, onRowClick, custom
   onError={(err) => ...}            // generation/validation/render failures
   endpoint="/api/claude"            // configurable proxy URL
+  extensions={[myCandleChart]}      // optional: extra catalog components (see Extensibility)
 />
 ```
 
@@ -65,13 +68,48 @@ generative-ui-chat/
 
 ## Catalog (the LLM's vocabulary)
 
-Three groups, each entry with description + prop docs:
+Four groups, each entry with description + prop docs:
 
 - **Layout/display:** Stack, Grid, Card, Tabs, Accordion, Divider, Typography, Chip,
   Alert, Avatar, List, LinearProgress, custom `StatTile` (label/value/delta).
 - **MUI X:** LineChart, BarChart, PieChart, Sparkline, DataGrid.
 - **Inputs:** Select, Slider, ToggleButtonGroup, TextField, Switch, Button — all
   writing to `$state` paths so generated controls can drive generated views.
+- **Finance (third-party, built in):**
+  - `AdvancedGrid` — AG Grid Community wrapper: sortable/filterable columns, pinning,
+    per-column formatting (currency, percent, signed-delta coloring).
+  - `CandlestickChart` — ECharts OHLC + optional volume pane.
+  - `Heatmap` — ECharts, e.g. symbol × metric or correlation-style views.
+  - `Treemap` — ECharts, e.g. allocation by sector sized by exposure.
+
+  Heavy libraries are lazy-loaded (`React.lazy` per registry entry) so specs that
+  don't use them cost nothing.
+
+### Styling: tokens, not CSS
+
+The LLM styles through the theme, never around it:
+
+- Every component carries token-constrained design props (enums mapped to the MUI
+  theme): `color: 'primary' | 'success' | 'error' | ...`, `size`, `variant`, `emphasis`.
+- Layout primitives (Stack/Grid/Box/Card) accept a **validated `sx` subset** — a
+  Zod-whitelisted slice of MUI's `sx`: spacing in theme units, alignment,
+  width/height fractions, `borderRadius`, `maxHeight`. Real layout freedom, no
+  arbitrary CSS. No Tailwind and no raw class/style strings (unvalidatable, and
+  runtime-generated Tailwind classes don't exist in build-time-compiled CSS anyway).
+
+### Extensibility
+
+Third-party components are first-class. A catalog entry is
+`defineCatalogComponent({ type, description, props (Zod), events, component })`;
+the wrapper component receives validated, already-resolved props (live data
+included) and adapts them to the library's config internally. **The library's raw
+config surface (ECharts `option`, AG Grid config) is never exposed to the LLM** —
+each wrapper presents an opinionated, validatable prop schema instead.
+
+Consumers pass extra entries via the `extensions` prop; they merge into the
+built-in catalog before compilation, so the tool schema, system prompt, and
+registry pick them up with zero extra wiring. The built-in finance group is
+implemented through this same mechanism (dogfooding the extension API).
 
 **Data transforms** (whitelisted, host-executed, memoized): `groupBy`,
 `aggregate(sum|avg|min|max|count)`, `sortBy`, `filter`, `topN`, `pctChange`.
@@ -117,16 +155,19 @@ Client loop, per user turn:
 
 Dashboard shell (MUI) with a simulated ticker: ~12 positions
 (`symbol, sector, qty, avgPrice, lastPrice, pnl, pnlPct, updatedAt`), prices
-random-walking every second. `<GenerativeUIChat>` mounted beside it; callback
-invocations logged visibly to demonstrate the lifecycle API.
+random-walking every second. The generator also maintains per-symbol OHLC history
+(rolling window, appended as ticks aggregate) so `CandlestickChart` has real data
+to bind. `<GenerativeUIChat>` mounted beside it; callback invocations logged
+visibly to demonstrate the lifecycle API.
 
 ## Testing
 
 Vitest:
-- catalog → tool-schema compilation (snapshot / shape tests)
+- catalog → tool-schema compilation (snapshot / shape tests), including merged extensions
 - transforms (pure function tests)
+- `sx` subset / style-token validation (accepts whitelisted, rejects arbitrary CSS)
 - spec validation + repair loop with a mocked Claude client
-- render smoke test: known-good spec through the registry
+- render smoke test: known-good spec through the registry (incl. one finance component)
 
 Live verification: run demo in browser, generate a UI, watch it tick.
 
@@ -134,5 +175,7 @@ Live verification: run demo in browser, generate a UI, watch it tick.
 
 `@mui/material`, `@mui/x-chat`, `@mui/x-charts`, `@mui/x-data-grid`,
 `@json-render/core`, `@json-render/react`, `@json-render/jotai`, `jotai`
-(`xstate` + `@json-render/xstate` for the optional store), `express`,
-`@anthropic-ai/sdk` (server only), `vite`, `vitest`, `typescript`.
+(`xstate` + `@json-render/xstate` for the optional store),
+`ag-grid-community` + `ag-grid-react`, `echarts` (thin custom wrapper, no
+`echarts-for-react`), `zod`, `express`, `@anthropic-ai/sdk` (server only),
+`vite`, `vitest`, `typescript`.
