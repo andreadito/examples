@@ -58,4 +58,13 @@ describe('transforms', () => {
     expect(transformFunctions.aggregateBy({ data: 'nonsense' })).toEqual([]);
     expect(Object.keys(transformDeclarations)).toEqual(Object.keys(transformFunctions));
   });
+
+  it('wrappers normalize invalid op/dir instead of failing silently', () => {
+    const agg = transformFunctions.aggregateBy({ data: rows, by: 'sector', field: 'pnl', op: 'average' }) as Array<{ key: string; value: number }>;
+    expect(agg.find((g) => g.key === 'Tech')?.value).toBe(50); // falls back to sum
+    const filtered = transformFunctions.filterBy({ data: rows, field: 'sector', op: 'includes???', value: 'Tech' }) as unknown[];
+    expect(filtered).toHaveLength(2); // falls back to eq
+    const sorted = transformFunctions.sortBy({ data: rows, field: 'pnl', dir: 'DESCENDING' }) as Array<{ pnl: number }>;
+    expect(sorted[0].pnl).toBe(-50); // falls back to asc
+  });
 });

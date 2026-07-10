@@ -63,11 +63,18 @@ export function withPctChange(rows: Row[], field: string) {
 
 type Args = Record<string, unknown>;
 
+const AGG_OPS: readonly AggOp[] = ['sum', 'avg', 'min', 'max', 'count'];
+const FILTER_OPS: readonly FilterOp[] = ['eq', 'neq', 'gt', 'lt', 'contains'];
+
+const asAggOp = (v: unknown): AggOp => (AGG_OPS.includes(v as AggOp) ? (v as AggOp) : 'sum');
+const asFilterOp = (v: unknown): FilterOp => (FILTER_OPS.includes(v as FilterOp) ? (v as FilterOp) : 'eq');
+const asDir = (v: unknown): 'asc' | 'desc' => (v === 'desc' ? 'desc' : 'asc');
+
 export const transformFunctions: Record<string, (args: Args) => unknown> = {
-  aggregateBy: (a) => aggregateBy(asRows(a.data), String(a.by ?? ''), String(a.field ?? ''), (a.op as AggOp) ?? 'sum'),
-  sortBy: (a) => sortRows(asRows(a.data), String(a.field ?? ''), (a.dir as 'asc' | 'desc') ?? 'asc'),
-  filterBy: (a) => filterRows(asRows(a.data), String(a.field ?? ''), (a.op as FilterOp) ?? 'eq', a.value),
-  topN: (a) => topN(asRows(a.data), String(a.field ?? ''), num(a.n ?? 5), (a.dir as 'asc' | 'desc') ?? 'desc'),
+  aggregateBy: (a) => aggregateBy(asRows(a.data), String(a.by ?? ''), String(a.field ?? ''), asAggOp(a.op)),
+  sortBy: (a) => sortRows(asRows(a.data), String(a.field ?? ''), asDir(a.dir)),
+  filterBy: (a) => filterRows(asRows(a.data), String(a.field ?? ''), asFilterOp(a.op), a.value),
+  topN: (a) => topN(asRows(a.data), String(a.field ?? ''), num(a.n ?? 5), a.dir === 'asc' ? 'asc' : 'desc'),
   pctChange: (a) => withPctChange(asRows(a.data), String(a.field ?? '')),
 };
 
