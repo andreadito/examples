@@ -1,8 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { App } from './demo/App';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <div>generative-ui-chat scaffold</div>
+    <App />
   </React.StrictMode>,
 );
