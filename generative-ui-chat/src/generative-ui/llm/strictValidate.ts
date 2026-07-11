@@ -46,7 +46,7 @@ function isExpressionObject(value: unknown): boolean {
   );
 }
 
-function issuesToStrings(error: unknown): string[] {
+function issuesToStrings(error: unknown, prefix?: string): string[] {
   if (
     error &&
     typeof error === 'object' &&
@@ -55,7 +55,8 @@ function issuesToStrings(error: unknown): string[] {
   ) {
     return (error as { issues: Array<{ path?: unknown[]; message: string }> }).issues.map((issue) => {
       const path = Array.isArray(issue.path) ? issue.path.join('.') : '';
-      return path ? `${path}: ${issue.message}` : issue.message;
+      const fullPath = prefix && path ? `${prefix}.${path}` : prefix || path;
+      return fullPath ? `${fullPath}: ${issue.message}` : issue.message;
     });
   }
   return [String(error ?? 'validation failed')];
@@ -129,8 +130,8 @@ export function createStrictValidator(
         }
         const result = fieldSchema.safeParse(value);
         if (!result.success) {
-          const detail = result.error.issues.map((issue: { message: string }) => issue.message).join('; ');
-          errors.push(`elements.${elementId}.props.${key}: ${detail}`);
+          const prefix = `elements.${elementId}.props.${key}`;
+          errors.push(...issuesToStrings(result.error, prefix));
         }
       }
     }

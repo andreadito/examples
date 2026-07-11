@@ -50,4 +50,34 @@ describe('createStrictValidator', () => {
     const result = validate(spec);
     expect(result).toEqual({ success: true, errors: [] });
   });
+
+  it('includes full path with array index in nested validation errors', () => {
+    const spec = {
+      root: 'sel-1',
+      elements: {
+        'sel-1': {
+          type: 'Select',
+          props: {
+            label: 'Pick one',
+            value: 'a',
+            options: [
+              { value: 'a', label: 'A' },
+              { value: 'b' }, // missing required label at index 1
+            ],
+          },
+          children: [],
+          visible: true,
+        },
+      },
+    };
+    const result = validate(spec);
+    expect(result.success).toBe(false);
+    expect(result.errors.length).toBeGreaterThan(0);
+    const errorMessages = result.errors.join(' | ');
+    // Error should include element key, prop path (options), array index (1), and field name (label)
+    expect(errorMessages).toMatch(/sel-1/);
+    expect(errorMessages).toMatch(/options/);
+    expect(errorMessages).toMatch(/\b1\b/);
+    expect(errorMessages).toMatch(/label/);
+  });
 });
