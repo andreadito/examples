@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import type { FunctionComponent } from 'react';
 import { BarChart as MuiBarChart, LineChart as MuiLineChart, PieChart as MuiPieChart, SparkLineChart } from '@mui/x-charts';
 import type { JsonRenderComponentProps } from '../extension';
 import type { ColorToken } from '../styleTokens';
@@ -80,7 +80,7 @@ function SparklineImpl({ props }: JsonRenderComponentProps) {
   );
 }
 
-export const chartComponents: Record<string, ComponentType<JsonRenderComponentProps>> = {
+export const chartComponents: Record<string, FunctionComponent<JsonRenderComponentProps>> = {
   LineChart: LineChartImpl,
   BarChart: BarChartImpl,
   PieChart: PieChartImpl,

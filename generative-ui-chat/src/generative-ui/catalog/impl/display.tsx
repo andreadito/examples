@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import type { FunctionComponent } from 'react';
 import {
   Alert as MuiAlert,
   Box,
@@ -99,7 +99,7 @@ function DataListImpl({ props }: JsonRenderComponentProps) {
   );
 }
 
-export const displayComponents: Record<string, ComponentType<JsonRenderComponentProps>> = {
+export const displayComponents: Record<string, FunctionComponent<JsonRenderComponentProps>> = {
   Typography: TypographyImpl,
   Chip: ChipImpl,
   Alert: AlertImpl,

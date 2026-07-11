@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import type { FunctionComponent } from 'react';
 import { Box } from '@mui/material';
 import { DataGrid as MuiDataGrid } from '@mui/x-data-grid';
 import type { GridColDef } from '@mui/x-data-grid';
@@ -42,6 +42,6 @@ function DataGridImpl({ props }: JsonRenderComponentProps) {
   );
 }
 
-export const gridComponents: Record<string, ComponentType<JsonRenderComponentProps>> = {
+export const gridComponents: Record<string, FunctionComponent<JsonRenderComponentProps>> = {
   DataGrid: DataGridImpl,
 };

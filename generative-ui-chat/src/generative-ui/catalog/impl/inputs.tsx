@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import type { FunctionComponent } from 'react';
 import {
   Button as MuiButton,
   FormControl,
@@ -132,7 +132,7 @@ function ButtonImpl({ props, emit }: JsonRenderComponentProps) {
   );
 }
 
-export const inputComponents: Record<string, ComponentType<JsonRenderComponentProps>> = {
+export const inputComponents: Record<string, FunctionComponent<JsonRenderComponentProps>> = {
   Tabs: TabsImpl,
   Select: SelectImpl,
   Slider: SliderImpl,

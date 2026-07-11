@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from 'react';
+import type { FunctionComponent, ReactNode } from 'react';
 import type { z } from 'zod';
 
 /** Props every registered json-render component receives (ComponentContext). */
@@ -17,7 +17,7 @@ export interface CatalogExtension {
     slots?: string[];
     description?: string;
   };
-  component: ComponentType<JsonRenderComponentProps>;
+  component: FunctionComponent<JsonRenderComponentProps>;
 }
 
 /** Identity helper — exists for inference/documentation at call sites. */

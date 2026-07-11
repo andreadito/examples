@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import type { FunctionComponent } from 'react';
 import { Box as MuiBox, Card as MuiCard, CardContent, CardHeader, Divider as MuiDivider, Stack as MuiStack } from '@mui/material';
 import type { JsonRenderComponentProps } from '../extension';
 import { toSx } from '../styleTokens';
@@ -36,7 +36,7 @@ function DividerImpl() {
   return <MuiDivider />;
 }
 
-export const layoutComponents: Record<string, ComponentType<JsonRenderComponentProps>> = {
+export const layoutComponents: Record<string, FunctionComponent<JsonRenderComponentProps>> = {
   Stack: StackImpl,
   Box: BoxImpl,
   Card: CardImpl,

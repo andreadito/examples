@@ -18,14 +18,14 @@ export function buildRuntime({
 }) {
   const catalog = buildCatalog(extensions);
   const extComponents = Object.fromEntries(extensions.map((e) => [e.type, e.component]));
-  // `Components<C>` (the type defineRegistry's `components` option expects) is a
-  // record of bare render functions, whereas our impl files (and
-  // `CatalogExtension.component`) are typed as `ComponentType<JsonRenderComponentProps>`
-  // (a React.ComponentType — function OR class) to match the extension contract
-  // from Task 5. The class-component branch of that union has no overlap with
-  // `Components<C>`'s function-only signature, so a single `as` cast is
-  // rejected by tsc; every impl here is in fact a plain function component, so
-  // the double cast is safe.
+  // `Components<C>` (the type defineRegistry's `components` option expects) defines
+  // ComponentFn with `props: Record<string, unknown>`, while our JsonRenderComponentProps
+  // uses `props: Record<string, never> & Record<string, unknown>`. These are structurally
+  // incompatible due to TypeScript's variance rules on index signatures; the intersection
+  // type creates a different structural shape than the bare `Record<string, unknown>`.
+  // All components conform to JsonRenderComponentProps at runtime, so the double cast via
+  // `unknown` bypasses the structural mismatch. Extensions are now constrained to
+  // FunctionComponent (no class components), so this cast is safe.
   const mergedComponents = {
     ...layoutComponents,
     ...displayComponents,
