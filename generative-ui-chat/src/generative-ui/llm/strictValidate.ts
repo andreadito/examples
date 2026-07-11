@@ -95,6 +95,15 @@ function isSpecShaped(spec: unknown): spec is Spec {
  * prop's literal type. Missing required props are NOT flagged here:
  * presence heuristics are unreliable once expressions/bindings are in play,
  * so this only validates values that are actually present.
+ *
+ * One deliberate carve-out from the expression skip above: the `sx` prop.
+ * `sx` is rendered through `toSx()`'s whitelisted subset (see
+ * `catalog/styleTokens.ts`), never resolved as a live `$state`/`$computed`
+ * binding by the renderer, so there is no legitimate reason for its value to
+ * be an expression object. Allowing it through as "just another expression"
+ * would let a crafted `{ $state: ... }`-shaped object smuggle arbitrary CSS
+ * past the whitelist, so `sx` expression objects are rejected here instead
+ * of skipped.
  */
 export function createStrictValidator(
   catalog: CatalogLike,
@@ -122,7 +131,12 @@ export function createStrictValidator(
       const shape = def.props.shape as Record<string, z.ZodTypeAny | undefined>;
       const props = element.props ?? {};
       for (const [key, value] of Object.entries(props)) {
-        if (isExpressionObject(value)) continue;
+        if (isExpressionObject(value)) {
+          if (key === 'sx') {
+            errors.push(`elements.${elementId}.props.sx: expressions are not allowed for sx`);
+          }
+          continue;
+        }
         const fieldSchema = shape[key];
         if (!fieldSchema) {
           errors.push(`elements.${elementId}.props.${key}: unknown prop on ${element.type}`);

@@ -229,3 +229,14 @@ npm run typecheck  # tsc -b (app) + tsc -p server/tsconfig.json (proxy)
   generation loop against fakes/mocks; the browser-driven scenario pass
   (typing real prompts into the running demo against a live model) is
   deferred pending an available API key and is not part of this commit.
+- **The Express proxy (`server/app.ts`) is a local dev server, not
+  production-hardened**: it enables open CORS (`cors()` with no origin
+  allowlist) and has no rate limiting. Do not deploy it as-is — put a real
+  origin allowlist and rate limiting (or an API gateway) in front of it
+  before exposing it beyond `localhost`.
+- **`onEvent` payloads are LLM-authored and must be treated as untrusted
+  input.** The generated spec (and therefore any `emit`/`onEvent` payload it
+  produces at render time) comes from the model, not your own code — host
+  apps should validate/sanitize `onEvent` payloads before using them to drive
+  side effects (network calls, navigation, writes) rather than trusting their
+  shape or contents.

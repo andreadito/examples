@@ -33,7 +33,38 @@ const spec = {
   },
 };
 
+// `normalizeSpec` fills in an absent/null `visible` key with the literal
+// `true` (not `undefined` — see normalizeSpec.ts), so `visible: true` is the
+// other value elements commonly carry in a validated, generation-loop-produced
+// spec. This pins that `@json-render/react`'s `ElementRenderer` renders such
+// elements normally (unlike `visible: null`, which crashes — see the library
+// finding above): `true` is not `undefined`, so it does NOT hit the
+// "visible" short-circuit, but `evaluateVisibility` handles a boolean `true`
+// condition without the `'$index' in null` crash that a bare `null` triggers.
+const visibleTrueSpec = {
+  root: 'stack-1',
+  elements: {
+    'stack-1': { type: 'Stack', props: { direction: 'column', gap: 2, wrap: null, sx: null }, children: ['text-1'], visible: true },
+    'text-1': { type: 'Typography', props: { text: 'always visible', variant: 'body2', color: null, sx: null }, children: [], visible: true },
+  },
+};
+
 describe('registry smoke test', () => {
+  it('renders a spec whose elements use visible: true through the real Renderer', () => {
+    const { catalog, registry } = buildRuntime({ emit: vi.fn() });
+    expect(catalog.validate(visibleTrueSpec).success).toBe(true);
+    render(
+      <StateProvider initialState={{ data: {} }}>
+        <VisibilityProvider>
+          <ActionProvider handlers={{}}>
+            <Renderer spec={visibleTrueSpec as never} registry={registry} />
+          </ActionProvider>
+        </VisibilityProvider>
+      </StateProvider>,
+    );
+    expect(screen.getByText('always visible')).toBeInTheDocument();
+  });
+
   it('renders a validated spec with live state', () => {
     const { catalog, registry } = buildRuntime({ emit: vi.fn() });
     expect(catalog.validate(spec).success).toBe(true);

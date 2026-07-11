@@ -35,10 +35,6 @@ export function AdvancedGridImpl({ props }: JsonRenderComponentProps) {
     valueFormatter: (params) => formatValue(params.value, col.format ?? null),
     ...(col.format === 'delta'
       ? {
-          cellClassRules: {
-            'finance-delta-positive': (params) => Number(params.value) >= 0,
-            'finance-delta-negative': (params) => Number(params.value) < 0,
-          },
           cellStyle: (params) => {
             const n = Number(params.value);
             if (!Number.isFinite(n)) return null;

@@ -37,6 +37,14 @@ describe('POST /api/claude', () => {
     expect(client.messages.create.mock.calls[0][0].max_tokens).toBe(16000);
   });
 
+  it('falls back to the cap for a non-positive max_tokens instead of passing it through', async () => {
+    const client = makeClient();
+    await request(createApp(client))
+      .post('/api/claude')
+      .send({ max_tokens: -1, messages: [{ role: 'user', content: 'x' }] });
+    expect(client.messages.create.mock.calls[0][0].max_tokens).toBe(16000);
+  });
+
   it('rejects requests without messages', async () => {
     const res = await request(createApp(makeClient())).post('/api/claude').send({});
     expect(res.status).toBe(400);

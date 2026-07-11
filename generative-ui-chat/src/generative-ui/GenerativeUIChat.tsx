@@ -8,7 +8,7 @@ import { financeExtensions } from './catalog/financeExtensions';
 import type { CatalogExtension } from './catalog/extension';
 import { createJotaiStore } from './state/jotaiStore';
 import type { StateStore } from './state/types';
-import { generate } from './llm/generate';
+import { generate, FALLBACK_ASSISTANT_TEXT } from './llm/generate';
 import type { ChatTurn, GenerateResult } from './llm/generate';
 import { describeData } from './llm/describeData';
 import { createStrictValidator, mergedDefinitions } from './llm/strictValidate';
@@ -141,13 +141,22 @@ export function GenerativeUIChat(props: GenerativeUIChatProps) {
           setSpec(result.spec);
           onSpecChangeRef.current?.(result.spec);
         }
-        historyRef.current = [...historyRef.current, { role: 'user', text: prompt }, { role: 'assistant', text: result.text }];
+        // Same fallback as the display path below: a render_ui-only response
+        // has no text block, so `result.text` is `''`. Storing that verbatim
+        // would replay as an empty assistant content block next turn, which
+        // the Anthropic API rejects with a 400 (see generate.ts's
+        // FALLBACK_ASSISTANT_TEXT doc comment).
+        historyRef.current = [
+          ...historyRef.current,
+          { role: 'user', text: prompt },
+          { role: 'assistant', text: result.text || FALLBACK_ASSISTANT_TEXT },
+        ];
         const messageId = crypto.randomUUID();
         return new ReadableStream({
           start(controller) {
             controller.enqueue({ type: 'start', messageId });
             controller.enqueue({ type: 'text-start', id: 'text-1' });
-            controller.enqueue({ type: 'text-delta', id: 'text-1', delta: result.text || 'Done — rendered on the canvas.' });
+            controller.enqueue({ type: 'text-delta', id: 'text-1', delta: result.text || FALLBACK_ASSISTANT_TEXT });
             controller.enqueue({ type: 'text-end', id: 'text-1' });
             controller.enqueue({ type: 'finish', messageId });
             controller.close();

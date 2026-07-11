@@ -31,8 +31,19 @@ export const sxSubsetSchema = z
   .strict();
 export type SxSubset = z.infer<typeof sxSubsetSchema>;
 
+/**
+ * Defense-in-depth: `sx` values are expected to already be whitelist-checked
+ * (`sxSubsetSchema`, via `createStrictValidator`'s `sx`-specific expression
+ * rejection — see `llm/strictValidate.ts`) before they ever reach a
+ * component implementation. Re-validating here means that even if a
+ * non-whitelisted shape is smuggled past that layer (a bug, a caller that
+ * skips validation, etc.), the element renders unstyled instead of injecting
+ * arbitrary CSS onto the page.
+ */
 export function toSx(value: Partial<SxSubset> | null | undefined) {
   if (!value) return undefined;
-  const entries = Object.entries(value).filter(([, v]) => v !== null && v !== undefined);
+  const parsed = sxSubsetSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  const entries = Object.entries(parsed.data).filter(([, v]) => v !== null && v !== undefined);
   return entries.length ? Object.fromEntries(entries) : undefined;
 }

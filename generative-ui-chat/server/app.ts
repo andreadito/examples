@@ -20,9 +20,16 @@ export function createApp(client: ClaudeClient) {
       return;
     }
     try {
+      // Clamp both directions: a too-large request is capped, but a
+      // non-positive/NaN/missing value must also fall back to the cap rather
+      // than being passed through to `Math.min` (which would otherwise let
+      // e.g. `max_tokens: -1` or `max_tokens: 0` reach the upstream API
+      // verbatim as the smaller of the two).
+      const requested = Number(max_tokens);
+      const maxTokens = Number.isFinite(requested) && requested > 0 ? Math.min(requested, MAX_TOKENS_CAP) : MAX_TOKENS_CAP;
       const response = await client.messages.create({
         model: MODEL,
-        max_tokens: Math.min(Number(max_tokens) || MAX_TOKENS_CAP, MAX_TOKENS_CAP),
+        max_tokens: maxTokens,
         thinking: { type: 'adaptive' },
         ...(system ? { system } : {}),
         messages,

@@ -96,4 +96,30 @@ describe('generate', () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ok: false, status: 429, json: async () => ({ error: 'rate limited' }) });
     await expect(generate(baseArgs)).rejects.toThrow(/rate limited/);
   });
+
+  it('a tool_use-only response (no text block) resolves with empty text and does not throw', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      claudeResponse([{ type: 'tool_use', id: 'tu_1', name: 'render_ui', input: goodSpec }]),
+    );
+    const result = await generate(baseArgs);
+    expect(result.text).toBe('');
+    expect(result.spec).toEqual(goodSpec);
+  });
+
+  it('substitutes a placeholder for an empty-text history turn instead of sending an empty content block', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(claudeResponse([{ type: 'text', text: 'ok' }]));
+    await generate({
+      ...baseArgs,
+      history: [
+        { role: 'user', text: 'earlier prompt' },
+        { role: 'assistant', text: '' }, // e.g. a stored render_ui-only turn
+      ],
+    });
+    const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+    const historyAssistantMessage = body.messages[1];
+    expect(historyAssistantMessage.role).toBe('assistant');
+    expect(historyAssistantMessage.content).not.toBe('');
+    expect(typeof historyAssistantMessage.content).toBe('string');
+    expect(historyAssistantMessage.content.length).toBeGreaterThan(0);
+  });
 });

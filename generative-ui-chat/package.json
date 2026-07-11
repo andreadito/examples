@@ -25,7 +25,7 @@
     "@mui/icons-material": "^7.3.11",
     "@mui/material": "^7.3.11",
     "@mui/x-charts": "^9.9.0",
-    "@mui/x-chat": "^9.0.0-alpha.13",
+    "@mui/x-chat": "9.0.0-alpha.13",
     "@mui/x-data-grid": "^9.9.0",
     "@xstate/store": "^4.2.1",
     "ag-grid-community": "^36.0.0",

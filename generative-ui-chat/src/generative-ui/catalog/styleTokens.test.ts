@@ -18,6 +18,10 @@ describe('style tokens', () => {
     expect(toSx(undefined)).toBeUndefined();
   });
 
+  it('toSx returns undefined for a non-whitelisted shape smuggled past upstream validation', () => {
+    expect(toSx({ position: 'fixed' } as never)).toBeUndefined();
+  });
+
   it('colorToken maps to MUI colors', () => {
     expect(colorToken.safeParse('success').success).toBe(true);
     expect(colorToken.safeParse('rebeccapurple').success).toBe(false);

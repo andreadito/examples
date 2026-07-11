@@ -46,6 +46,16 @@ interface ProxyResponse {
 
 const REFUSAL_MESSAGE = "The request was declined by the model's safety system. Try rephrasing.";
 
+/**
+ * Placeholder assistant turn text used whenever Claude's response has no text
+ * block (a render_ui-only tool call, most commonly). An empty string here
+ * would round-trip as an empty assistant `content` on the *next* turn once
+ * appended to history, which the Anthropic API rejects with a 400 — so both
+ * the chat display (`GenerativeUIChat.tsx`) and `buildMessages` below
+ * substitute this same fallback rather than ever storing/sending `''`.
+ */
+export const FALLBACK_ASSISTANT_TEXT = 'Done — rendered on the canvas.';
+
 async function callProxy(endpoint: string, body: object, signal?: AbortSignal): Promise<ProxyResponse> {
   const res = await fetch(endpoint, {
     method: 'POST',
@@ -82,7 +92,13 @@ function buildTools(catalog: GenerateCatalog) {
 }
 
 function buildMessages(history: ChatTurn[], prompt: string, currentSpec: object | null): ProxyMessage[] {
-  const messages: ProxyMessage[] = history.map((turn) => ({ role: turn.role, content: turn.text }));
+  // Defensive: a history turn with empty text (e.g. an old assistant turn
+  // that predates the GenerativeUIChat.tsx fallback fix, or a caller-supplied
+  // history) must never become an empty `content` string on the wire — the
+  // Anthropic API 400s on that. Substitute the same placeholder used for
+  // empty tool-call-only responses rather than dropping the turn, so
+  // user/assistant alternation in `history` is preserved.
+  const messages: ProxyMessage[] = history.map((turn) => ({ role: turn.role, content: turn.text || FALLBACK_ASSISTANT_TEXT }));
   const userText = currentSpec
     ? `${prompt}\n\nCurrent spec:\n${JSON.stringify(currentSpec)}\nEdit it and call render_ui with the complete updated spec.`
     : prompt;

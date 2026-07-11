@@ -31,6 +31,20 @@ describe('createStrictValidator', () => {
     expect(result.errors).toEqual([]);
   });
 
+  it('rejects an expression object for the sx prop specifically (whitelist bypass)', () => {
+    const spec = statTileSpec({
+      label: 'PnL',
+      value: 100,
+      format: 'currency',
+      delta: null,
+      color: null,
+      sx: { $state: '/data/hostileSx' },
+    });
+    const result = validate(spec);
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e) => e.includes('props.sx') && e.includes('expressions are not allowed'))).toBe(true);
+  });
+
   it('catches an unknown prop key on an otherwise-known component', () => {
     const spec = statTileSpec({ label: 'PnL', value: 100, format: 'currency', delta: null, color: null, sx: null, bogus: 'nope' });
     const result = validate(spec);
