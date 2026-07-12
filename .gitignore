@@ -6,3 +6,4 @@ dist-ssr
 *.local
 *.log
 .claude/launch.json
+.playwright-mcp/
