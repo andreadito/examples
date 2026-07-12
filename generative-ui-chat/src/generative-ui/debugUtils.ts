@@ -166,3 +166,42 @@ export function searchPaths(obj: unknown, query: string, limit = 100): PathMatch
   walk(obj, '');
   return out;
 }
+
+export interface StateChange {
+  path: string;
+  from: unknown;
+  to: unknown;
+}
+
+/**
+ * Leaf-level diff between two state snapshots — the inspector's mutation
+ * log. Recurses through plain objects; arrays are treated as leaves (a
+ * ticking data feed replaces whole arrays every update, and row-by-row
+ * diffs of 1000-bar feeds would drown the signal), reported as a summary
+ * change when their contents differ. Capped so a huge write can't wedge
+ * the panel.
+ */
+export function diffSnapshots(prev: unknown, next: unknown, limit = 30): StateChange[] {
+  const out: StateChange[] = [];
+  const isRecord = (v: unknown): v is Record<string, unknown> =>
+    typeof v === 'object' && v !== null && !Array.isArray(v);
+  const walk = (a: unknown, b: unknown, path: string) => {
+    if (out.length >= limit) return;
+    if (a === b) return;
+    if (isRecord(a) && isRecord(b)) {
+      for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+        walk(a[key], b[key], `${path}/${key}`);
+      }
+      return;
+    }
+    if (Array.isArray(a) && Array.isArray(b)) {
+      if (JSON.stringify(a) !== JSON.stringify(b)) {
+        out.push({ path, from: `[${a.length} items]`, to: `[${b.length} items]` });
+      }
+      return;
+    }
+    out.push({ path, from: a, to: b });
+  };
+  walk(prev, next, '');
+  return out;
+}

@@ -209,10 +209,40 @@ Default is a fresh jotai store per mount. Anything implementing json-render's
 store is pinned for the component's lifetime — to swap engines, remount with
 a `key`.
 
-## 8. Persisting and restoring UIs (spec + state)
+### State management as data (`createStateStore`)
 
-Everything a generated UI *is* lives in two plain-JSON documents, both
-engine-agnostic:
+State management is *defined at store creation*: which engine, and what
+initial state (flow steps, ticket defaults). That definition is itself plain
+JSON, so it can be persisted and versioned exactly like a spec:
+
+```ts
+import { createStateStore, type StateStoreConfig } from '@vaultgradient/generative-ui-chat';
+
+const stateConfig: StateStoreConfig = {
+  engine: 'xstate',                       // or 'jotai' (default)
+  initialState: { flow: { step: 'idle' }, ticket: { qty: 100 } },
+};
+
+<GenerativeUICanvas spec={spec} data={data} stateStore={createStateStore(stateConfig)} />;
+```
+
+A dev authors `{ spec, stateConfig }` once; your platform stores both; any
+runtime rebuilds the identical setup with `createStateStore(stateConfig)`.
+To resume a session instead of starting pristine, hydrate with a saved
+snapshot: `createStateStore({ ...stateConfig, initialState: savedSnapshot })`.
+
+The store's state *shape* is emergent, by design: `/data/*` comes from your
+`data` prop, input paths appear when rendered inputs write them
+(`$bindState`), and flow paths are whatever your host code writes. The
+`initialState` in the config is where you make the flow-relevant part of
+that shape explicit.
+
+## 8. Persisting and restoring UIs (spec + stateConfig + snapshot)
+
+Everything a generated UI *is* lives in plain-JSON documents, all
+engine-agnostic. For a full flow that's a triple — the spec (what renders),
+the state config (which engine + initial state, §7), and optionally a
+snapshot (a session's values):
 
 - **The spec** — the json-render config the model produced. Capture every
   version via `onSpecChange`; store it wherever you like (DB row, document
@@ -352,6 +382,17 @@ The built-in inspector (`{ }` button on the canvas, `debug` prop) shows the
 element tree, every binding with its live resolved value, searchable state,
 the raw spec, and a per-turn generation log with validation errors. When a
 generated UI misbehaves, the BINDINGS tab almost always names the culprit.
+
+The **STORE tab** is the state-management view: which engine backs the
+store (jotai / xstate / custom — tagged automatically by
+`createStateStore`/`createJotaiStore`/`createXStateStore`), the initial
+state it was configured with, and a live **mutation log** — every state
+write as `time · path · old → new`. For an xstate-driven flow this reads as
+the transition history; for jotai it's the per-path write history. Live
+`/data` ticks are muted by default (toggle to include them) so user
+interactions and flow transitions stay visible, and the copy button exports
+`{ engine, initialState, mutations }` for a bug report. In production
+(`debug={false}` for your readonly users) none of this mounts.
 
 Common integration issues:
 

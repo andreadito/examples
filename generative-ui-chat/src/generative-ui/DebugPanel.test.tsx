@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DebugPanel } from './DebugPanel';
 import { createJotaiStore } from './state/jotaiStore';
@@ -112,6 +112,27 @@ describe('DebugPanel', () => {
     expect(screen.getByText('build a dashboard')).toBeInTheDocument();
     expect(screen.getByText(/42\.0s/)).toBeInTheDocument();
     expect(screen.getByText('failed validation')).toBeInTheDocument();
+  });
+
+  it('Store tab shows the engine and logs mutations with old → new values', async () => {
+    const { store } = renderPanel();
+    await userEvent.click(screen.getByRole('tab', { name: 'Store' }));
+    expect(screen.getByText('jotai')).toBeInTheDocument();
+    expect(screen.getByText(/No mutations yet/)).toBeInTheDocument();
+
+    act(() => store.set('/threshold', 250));
+    expect(screen.getByText('/threshold')).toBeInTheDocument();
+    expect(screen.getByText('100')).toBeInTheDocument();
+    expect(screen.getByText('250')).toBeInTheDocument();
+  });
+
+  it('Store tab mutes /data churn by default but keeps it in the log', async () => {
+    const { store } = renderPanel();
+    await userEvent.click(screen.getByRole('tab', { name: 'Store' }));
+    act(() => store.set('/data', { totalPnl: 9999, positions: [] }));
+    expect(screen.getByText(/Only \/data ticks so far/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('switch', { name: /mute \/data/i }));
+    expect(screen.getByText('/data/totalPnl')).toBeInTheDocument();
   });
 
   it('calls onClose from the close button', async () => {

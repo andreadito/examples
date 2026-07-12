@@ -9,4 +9,8 @@ export type { CatalogExtension, JsonRenderComponentProps } from './catalog/exten
 export { financeExtensions } from './catalog/financeExtensions';
 export { createJotaiStore } from './state/jotaiStore';
 export { createXStateStore } from './state/xstateStore';
+export { createStateStore } from './state/createStateStore';
+export type { StateStoreConfig } from './state/createStateStore';
+export { getStoreMeta } from './state/storeMeta';
+export type { StateStoreMeta } from './state/storeMeta';
 export type { StateStore } from './state/types';
