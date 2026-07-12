@@ -131,6 +131,7 @@ import { GenerativeUIChat } from './src/generative-ui';
 | `data`            | `Record<string, unknown>`                                 | —                    | Live data; written to state under `/data` on every change (new reference required). |
 | `dataDescription` | `string?`                                                  | —                    | Prose hint prepended to the auto-generated data description sent to Claude. |
 | `stateStore`      | `StateStore?`                                              | fresh `createJotaiStore` | Caller-owned state store, e.g. `createXStateStore(...)`.                    |
+| `initialSpec`     | `object \| null?`                                          | —                    | A spec previously captured via `onSpecChange`, rendered (after validation) on mount and used as the base for follow-up edit prompts. |
 | `extensions`      | `CatalogExtension[]?`                                      | `[]`                 | Extra catalog components. `financeExtensions` are always included regardless of this prop. |
 | `endpoint`        | `string?`                                                  | `'/api/claude'`      | Proxy endpoint the generation loop calls.                                   |
 | `onSpecChange`    | `(spec: object \| null) => void`                            | —                    | Called whenever a new/updated spec renders.                                  |

@@ -12,6 +12,7 @@ import type { StateStore } from './state/types';
 import { generate, FALLBACK_ASSISTANT_TEXT } from './llm/generate';
 import type { ChatTurn, GenerateResult } from './llm/generate';
 import { describeData } from './llm/describeData';
+import { normalizeSpec } from './llm/normalizeSpec';
 import { createStrictValidator, mergedDefinitions } from './llm/strictValidate';
 import { CanvasErrorBoundary } from './CanvasErrorBoundary';
 import { DebugPanel } from './DebugPanel';
@@ -24,6 +25,14 @@ export interface GenerativeUIChatProps {
   dataDescription?: string;
   /** Caller-owned state store (e.g. `createXStateStore`). Defaults to a fresh `createJotaiStore`. */
   stateStore?: StateStore;
+  /**
+   * A previously stored spec (captured via `onSpecChange`) to render on
+   * mount. It goes through the same normalize + strict-validate pipeline as
+   * a generated spec — an invalid spec fires `onError` and leaves the canvas
+   * empty. Once rendered it is the current spec, so follow-up chat prompts
+   * edit it. Read once on mount; later changes to this prop are ignored.
+   */
+  initialSpec?: object | null;
   /** Extra catalog components. `financeExtensions` are ALWAYS included regardless of this prop. */
   extensions?: CatalogExtension[];
   /** Proxy endpoint the generation loop calls. @default '/api/claude' */
@@ -58,7 +67,7 @@ function isTextPart(part: { type: string }): part is { type: 'text'; text: strin
  * errors.
  */
 export function GenerativeUIChat(props: GenerativeUIChatProps) {
-  const { data, dataDescription, stateStore, extensions, endpoint = '/api/claude', debug = true, onSpecChange, onStateChange, onEvent, onError } = props;
+  const { data, dataDescription, stateStore, extensions, endpoint = '/api/claude', debug = true, initialSpec, onSpecChange, onStateChange, onEvent, onError } = props;
 
   // 1. Store: caller's or default jotai; stable for component lifetime.
   const storeRef = useRef<StateStore | undefined>(undefined);
@@ -107,6 +116,24 @@ export function GenerativeUIChat(props: GenerativeUIChatProps) {
   const specRef = useRef(spec);
   specRef.current = spec;
   const historyRef = useRef<ChatTurn[]>([]);
+
+  // Restore a persisted spec (mount only): same normalize + strict-validate
+  // path as a generated spec, so a stale or hand-edited stored spec cannot
+  // crash the renderer — it fails loudly through onError instead.
+  const initialSpecAppliedRef = useRef(false);
+  useEffect(() => {
+    if (initialSpecAppliedRef.current) return;
+    initialSpecAppliedRef.current = true;
+    if (!initialSpec) return;
+    const normalized = normalizeSpec(initialSpec) as object;
+    const result = validateRef.current(normalized);
+    if (result.success) {
+      setSpec(normalized);
+    } else {
+      onErrorRef.current?.(new Error(`initialSpec failed validation: ${result.errors.join('; ')}`));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only restore by design
+  }, []);
 
   const endpointRef = useRef(endpoint);
   endpointRef.current = endpoint;

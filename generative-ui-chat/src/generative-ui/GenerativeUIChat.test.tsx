@@ -26,6 +26,20 @@ describe('GenerativeUIChat', () => {
     expect(onSpecChange).toHaveBeenCalledWith(goodSpec);
   });
 
+  it('renders a persisted initialSpec on mount without any chat interaction', () => {
+    render(<GenerativeUIChat data={{ positions: [] }} initialSpec={goodSpec} />);
+    expect(screen.getByText('Total P&L')).toBeInTheDocument();
+    expect(screen.queryByText(/build something/i)).not.toBeInTheDocument();
+  });
+
+  it('fires onError and keeps the canvas empty for an invalid initialSpec', () => {
+    const onError = vi.fn();
+    const badSpec = { root: 's', elements: { s: { type: 'NoSuchComponent', props: {}, children: [] } } };
+    render(<GenerativeUIChat data={{}} initialSpec={badSpec} onError={onError} />);
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('initialSpec failed validation') }));
+    expect(screen.getByText(/build something/i)).toBeInTheDocument();
+  });
+
   it('fires onError when generation fails', async () => {
     vi.spyOn(llm, 'generate').mockRejectedValue(new Error('boom'));
     const onError = vi.fn();

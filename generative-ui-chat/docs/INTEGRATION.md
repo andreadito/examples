@@ -132,6 +132,7 @@ Give it an explicit height — it fills its container (canvas left, chat right).
 | `dataDescription` | `string` | — | Prose hint prepended to the auto-generated data schema |
 | `endpoint` | `string` | `'/api/claude'` | Your proxy URL |
 | `stateStore` | `StateStore` | jotai store | State engine behind bindings; pinned for the component's lifetime |
+| `initialSpec` | `object \| null` | — | A stored spec (from `onSpecChange`) to render on mount; validated first, becomes the current spec for follow-up edits |
 | `extensions` | `CatalogExtension[]` | `[]` | Extra components the LLM may use (finance set is always included) |
 | `debug` | `boolean` | `true` | Show the spec/state inspector toggle on the canvas |
 | `onSpecChange` | `(spec) => void` | — | Fires with each newly generated/edited spec (persist these to restore UIs) |
@@ -202,7 +203,50 @@ Default is a fresh jotai store per mount. Anything implementing json-render's
 store is pinned for the component's lifetime — to swap engines, remount with
 a `key`.
 
-## 8. Theming
+## 8. Persisting and restoring UIs (spec + state)
+
+Everything a generated UI *is* lives in two plain-JSON documents, both
+engine-agnostic:
+
+- **The spec** — the json-render config the model produced. Capture every
+  version via `onSpecChange`; store it wherever you like (DB row, document
+  store, URL). This is the document to treat as the source of truth.
+- **The state snapshot** — one JSON object holding `/data` plus every value
+  generated inputs have written (slider thresholds, selected tabs, …).
+  Capture it via `onStateChange` (fires on every mutation — throttle before
+  writing) or grab it manually from the inspector's STATE tab (copy button).
+  The snapshot looks identical whether jotai or xstate is behind it: both
+  engines implement the same `StateStore` interface, so persisted state is
+  portable between them.
+
+Restore is symmetric — hand the spec back as `initialSpec` and seed a store
+with the saved snapshot:
+
+```tsx
+const saved = await loadDashboard(id); // { spec, state } you persisted earlier
+
+<GenerativeUIChat
+  data={liveData}
+  initialSpec={saved.spec}
+  stateStore={createJotaiStore(saved.state)} // or createXStateStore(saved.state)
+  onSpecChange={(spec) => saveDashboard(id, { spec })}
+/>;
+```
+
+Notes:
+- `initialSpec` goes through the same normalize + strict-validate pipeline
+  as a generated spec. A stale spec (e.g. referencing a component you've
+  since removed from your extensions) fails loudly through `onError` and
+  leaves the canvas empty instead of crashing the renderer.
+- The restored spec becomes the current spec, so the next chat prompt edits
+  it ("make the chart bigger") rather than starting over.
+- Don't persist `/data` values expecting them to stick — the live `data`
+  prop overwrites `/data` on mount. Persist state for the *user-input*
+  paths; let data stay live.
+- Chat history is not part of the persisted pair: a restored session starts
+  with a fresh transcript but the full UI.
+
+## 9. Theming
 
 Everything renders through your MUI `ThemeProvider` — palette, typography,
 density all inherit. The chart/grid wrappers bridge non-MUI renderers: ECharts
@@ -211,7 +255,7 @@ gain/loss coloring uses `palette.success/error`. See the demo's
 `src/demo/theme.ts` for a Bloomberg-style terminal theme (dark + light) you
 can lift wholesale.
 
-## 9. Debugging integrations
+## 10. Debugging integrations
 
 The built-in inspector (`{ }` button on the canvas, `debug` prop) shows the
 element tree, every binding with its live resolved value, searchable state,
@@ -228,7 +272,7 @@ Common integration issues:
 | Empty charts | Binding points at a path that doesn't exist — check BINDINGS tab live values |
 | Blank canvas after crash | The ErrorBoundary caught a render error (fired `onError`); ask the chat to fix or rebuild |
 
-## 10. Building the library from this repo
+## 11. Building the library from this repo
 
 ```bash
 npm run build:lib   # → dist-lib/ (ESM + types + publish-ready package.json)
