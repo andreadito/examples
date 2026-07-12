@@ -15,6 +15,7 @@ import { describeData } from './llm/describeData';
 import { createStrictValidator, mergedDefinitions } from './llm/strictValidate';
 import { CanvasErrorBoundary } from './CanvasErrorBoundary';
 import { DebugPanel } from './DebugPanel';
+import type { TurnLogEntry } from './DebugPanel';
 
 export interface GenerativeUIChatProps {
   /** Live data; written to state under /data on every change. */
@@ -125,6 +126,7 @@ export function GenerativeUIChat(props: GenerativeUIChatProps) {
           .filter(isTextPart)
           .map((part) => part.text)
           .join('\n');
+        const turnStartedAt = Date.now();
         let result: GenerateResult;
         try {
           result = await generate({
@@ -138,6 +140,7 @@ export function GenerativeUIChat(props: GenerativeUIChatProps) {
             signal,
           });
         } catch (err) {
+          setTurns((prev) => [...prev.slice(-49), { at: turnStartedAt, prompt, ms: Date.now() - turnStartedAt, outcome: 'error' as const, error: err instanceof Error ? err.message : String(err) }]);
           onErrorRef.current?.(err as Error);
           throw err; // ChatBox renders its built-in error card with Retry
         }
@@ -150,6 +153,7 @@ export function GenerativeUIChat(props: GenerativeUIChatProps) {
         // would replay as an empty assistant content block next turn, which
         // the Anthropic API rejects with a 400 (see generate.ts's
         // FALLBACK_ASSISTANT_TEXT doc comment).
+        setTurns((prev) => [...prev.slice(-49), { at: turnStartedAt, prompt, ms: Date.now() - turnStartedAt, outcome: result.spec ? ('spec' as const) : ('text' as const), elements: result.spec ? Object.keys((result.spec as { elements?: object }).elements ?? {}).length : undefined }]);
         historyRef.current = [
           ...historyRef.current,
           { role: 'user', text: prompt },
@@ -172,6 +176,7 @@ export function GenerativeUIChat(props: GenerativeUIChatProps) {
   );
 
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [turns, setTurns] = useState<TurnLogEntry[]>([]);
 
   // 7. Layout: canvas (flex 1) + optional inspector + chat panel (fixed 380px).
   return (
@@ -199,7 +204,7 @@ export function GenerativeUIChat(props: GenerativeUIChatProps) {
       </Box>
       {debug && inspectorOpen ? (
         <Box sx={{ width: 360, flexShrink: 0, minWidth: 0 }}>
-          <DebugPanel spec={spec} store={store} onClose={() => setInspectorOpen(false)} />
+          <DebugPanel spec={spec} store={store} functions={runtime.functions} turns={turns} onClose={() => setInspectorOpen(false)} />
         </Box>
       ) : null}
       <Box sx={{ width: 380, borderLeft: '1px solid', borderColor: 'divider' }}>

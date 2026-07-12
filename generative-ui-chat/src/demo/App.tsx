@@ -16,11 +16,15 @@ import {
   Typography,
 } from '@mui/material';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
+import StorageIcon from '@mui/icons-material/Storage';
+import { Badge } from '@mui/material';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import { GenerativeUIChat, createXStateStore } from '../generative-ui';
 import { useTicker } from './useTicker';
 import { useCallbackLog, CallbackLog } from './CallbackLog';
 import { createTradingTheme } from './theme';
+import { useCustomSources } from './dataSources';
+import { DataSourcesDialog } from './DataSourcesDialog';
 
 const APP_BAR_HEIGHT = 44;
 const LOG_HEIGHT = 110;
@@ -68,10 +72,23 @@ export function App() {
   // canvas resets — that's the honest cost of swapping the state engine).
   const [storeKind, setStoreKind] = useState<'jotai' | 'xstate'>('jotai');
   const xstateStore = useMemo(() => (storeKind === 'xstate' ? createXStateStore({}) : undefined), [storeKind]);
+  const { sources, values: customValues, urlErrors, addSource, removeSource } = useCustomSources();
+  const [sourcesOpen, setSourcesOpen] = useState(false);
 
   const data = useMemo(
-    () => ({ positions, ohlc, book, news, fx, rates, credit, asOf, totalPnl: positions.reduce((sum, p) => sum + p.pnl, 0) }),
-    [positions, ohlc, book, news, fx, rates, credit, asOf],
+    () => ({
+      positions,
+      ohlc,
+      book,
+      news,
+      fx,
+      rates,
+      credit,
+      asOf,
+      totalPnl: positions.reduce((sum, p) => sum + p.pnl, 0),
+      ...customValues,
+    }),
+    [positions, ohlc, book, news, fx, rates, credit, asOf, customValues],
   );
 
   return (
@@ -83,6 +100,11 @@ export function App() {
             <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
               Trading Desk — Generative UI demo
             </Typography>
+            <IconButton color="inherit" aria-label="custom data sources" onClick={() => setSourcesOpen(true)} sx={{ mr: 0.5 }}>
+              <Badge badgeContent={sources.length} color="primary">
+                <StorageIcon fontSize="small" />
+              </Badge>
+            </IconButton>
             <ToggleButtonGroup
               size="small"
               exclusive
@@ -131,6 +153,14 @@ export function App() {
           <CallbackLog entries={entries} />
         </Box>
       </Box>
+      <DataSourcesDialog
+        open={sourcesOpen}
+        onClose={() => setSourcesOpen(false)}
+        sources={sources}
+        urlErrors={urlErrors}
+        onAdd={addSource}
+        onRemove={removeSource}
+      />
     </ThemeProvider>
   );
 }
