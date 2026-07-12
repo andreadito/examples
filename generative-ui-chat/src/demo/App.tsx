@@ -10,12 +10,14 @@ import {
   TableHead,
   TableRow,
   ThemeProvider,
+  ToggleButton,
+  ToggleButtonGroup,
   Toolbar,
   Typography,
 } from '@mui/material';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
-import { GenerativeUIChat } from '../generative-ui';
+import { GenerativeUIChat, createXStateStore } from '../generative-ui';
 import { useTicker } from './useTicker';
 import { useCallbackLog, CallbackLog } from './CallbackLog';
 import { createTradingTheme } from './theme';
@@ -61,6 +63,11 @@ export function App() {
   const { entries, log } = useCallbackLog();
   const [mode, setMode] = useState<'light' | 'dark'>('dark');
   const theme = useMemo(() => createTradingTheme(mode), [mode]);
+  // Which StateStore backs the generated UI. GenerativeUIChat pins its store
+  // for the component's lifetime, so switching remounts it via `key` (the
+  // canvas resets — that's the honest cost of swapping the state engine).
+  const [storeKind, setStoreKind] = useState<'jotai' | 'xstate'>('jotai');
+  const xstateStore = useMemo(() => (storeKind === 'xstate' ? createXStateStore({}) : undefined), [storeKind]);
 
   const data = useMemo(
     () => ({ positions, ohlc, book, news, fx, rates, credit, asOf, totalPnl: positions.reduce((sum, p) => sum + p.pnl, 0) }),
@@ -76,6 +83,17 @@ export function App() {
             <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
               Trading Desk — Generative UI demo
             </Typography>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={storeKind}
+              onChange={(_, v) => v && setStoreKind(v)}
+              aria-label="state store"
+              sx={{ mr: 1.5, '& .MuiToggleButton-root': { color: 'inherit', px: 1.5, py: 0.25, fontSize: '0.6875rem' } }}
+            >
+              <ToggleButton value="jotai">jotai</ToggleButton>
+              <ToggleButton value="xstate">xstate</ToggleButton>
+            </ToggleButtonGroup>
             <IconButton
               color="inherit"
               aria-label="toggle color scheme"
@@ -93,6 +111,8 @@ export function App() {
 
           <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
             <GenerativeUIChat
+              key={storeKind}
+              stateStore={xstateStore}
               data={data}
               dataDescription="Multi-desk live trading data: equity positions (positions, with per-symbol ohlc + book depth), FX desk (fx: pairs/rates/pips), rates desk (rates: yields/bps/DV01), credit desk (credit: CDS spreads in bps), streaming news"
               onSpecChange={(s) => {
