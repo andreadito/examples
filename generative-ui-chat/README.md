@@ -17,6 +17,12 @@ credit) with live positions, OHLC history, order-book depth, and a news feed
 full props reference, catalog extension, theming, and troubleshooting.
 `npm run build:lib` produces a publish-ready package in `dist-lib/`.
 
+The LLM is optional: `GenerativeUICanvas` renders any catalog-conformant
+spec (hand-written, stored, or produced by an external system) with the
+same validation and live bindings, and `createAuthoringContext` /
+`createSpecValidator` export the catalog contract so specs can be authored
+and checked anywhere — see the guide's "No LLM required" section.
+
 ## What it looks like in use
 
 1. Your app passes live data into `<GenerativeUIChat data={...} />`.

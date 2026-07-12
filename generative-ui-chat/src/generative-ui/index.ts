@@ -1,5 +1,9 @@
 export { GenerativeUIChat } from './GenerativeUIChat';
 export type { GenerativeUIChatProps } from './GenerativeUIChat';
+export { GenerativeUICanvas } from './GenerativeUICanvas';
+export type { GenerativeUICanvasProps } from './GenerativeUICanvas';
+export { createAuthoringContext, createSpecValidator } from './authoring';
+export type { AuthoringContext, AuthoringContextArgs, SpecValidation } from './authoring';
 export { defineCatalogComponent } from './catalog/extension';
 export type { CatalogExtension, JsonRenderComponentProps } from './catalog/extension';
 export { financeExtensions } from './catalog/financeExtensions';
