@@ -20,8 +20,8 @@ import { useTicker } from './useTicker';
 import { useCallbackLog, CallbackLog } from './CallbackLog';
 import { createTradingTheme } from './theme';
 
-const APP_BAR_HEIGHT = 64;
-const LOG_HEIGHT = 160;
+const APP_BAR_HEIGHT = 44;
+const LOG_HEIGHT = 110;
 
 function PositionsTable({ positions }: { positions: ReturnType<typeof useTicker>['positions'] }) {
   return (

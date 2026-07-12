@@ -20,7 +20,11 @@ type ColumnSpec = {
   width?: number | null;
 };
 
-const darkTheme = themeQuartz.withPart(colorSchemeDark);
+// Compact for trading density: tighter cell spacing + smaller type than the
+// Quartz defaults (spacing drives AG Grid's row height in the Theming API).
+const compactParams = { spacing: 4.5, fontSize: 12, headerFontSize: 12 } as const;
+const lightTheme = themeQuartz.withParams(compactParams);
+const darkTheme = themeQuartz.withPart(colorSchemeDark).withParams(compactParams);
 
 export function AdvancedGridImpl({ props }: JsonRenderComponentProps) {
   const { palette } = useTheme();
@@ -57,7 +61,7 @@ export function AdvancedGridImpl({ props }: JsonRenderComponentProps) {
 
   return (
     <div style={{ height, width: '100%' }}>
-      <AgGridReact theme={palette.mode === 'dark' ? darkTheme : themeQuartz} rowData={rows} columnDefs={columnDefs} />
+      <AgGridReact theme={palette.mode === 'dark' ? darkTheme : lightTheme} rowData={rows} columnDefs={columnDefs} />
     </div>
   );
 }

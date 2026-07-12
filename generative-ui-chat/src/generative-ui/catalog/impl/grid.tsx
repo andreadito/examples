@@ -35,7 +35,8 @@ function DataGridImpl({ props }: JsonRenderComponentProps) {
       <MuiDataGrid
         rows={rowsWithId}
         columns={columns}
-        density={(props.density as 'compact' | 'standard' | null | undefined) ?? 'standard'}
+        density={(props.density as 'compact' | 'standard' | null | undefined) ?? 'compact'}
+        columnHeaderHeight={32}
         disableRowSelectionOnClick
       />
     </Box>
