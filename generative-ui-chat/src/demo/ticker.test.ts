@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createInitialPositions, createInitialOhlc, tick } from './ticker';
+import { createInitialPositions, createInitialOhlc, createBook, nextNews, tick } from './ticker';
 
 describe('ticker', () => {
   it('creates 12 positions with sane fields', () => {
@@ -28,5 +28,31 @@ describe('ticker', () => {
     const bars = ohlc['AAPL'] ?? Object.values(ohlc)[0];
     expect(bars).toHaveLength(60);
     for (const b of bars) expect(b.high).toBeGreaterThanOrEqual(b.low);
+  });
+
+  it('createBook produces sorted depth around last price', () => {
+    const positions = createInitialPositions();
+    const book = createBook(positions);
+    for (const p of positions) {
+      const { bids, asks } = book[p.symbol];
+      expect(bids).toHaveLength(10);
+      expect(asks).toHaveLength(10);
+      expect(bids[0].price).toBeLessThan(p.lastPrice);
+      expect(asks[0].price).toBeGreaterThan(p.lastPrice);
+      expect(bids[0].price).toBeGreaterThan(bids[1].price); // descending
+      expect(asks[0].price).toBeLessThan(asks[1].price); // ascending
+      for (const level of [...bids, ...asks]) expect(level.size).toBeGreaterThan(0);
+    }
+  });
+
+  it('nextNews prepends and caps headlines', () => {
+    const positions = createInitialPositions();
+    let news = nextNews([], positions);
+    expect(news).toHaveLength(1);
+    for (let i = 0; i < 30; i++) news = nextNews(news, positions);
+    expect(news.length).toBeLessThanOrEqual(20);
+    expect(news[0].time).toBeGreaterThanOrEqual(news[1].time);
+    expect(news[0].headline).toContain(news[0].symbol.length ? '' : 'x');
+    expect(['DESK', 'WIRE', 'FLOW', 'SQUAWK']).toContain(news[0].source);
   });
 });

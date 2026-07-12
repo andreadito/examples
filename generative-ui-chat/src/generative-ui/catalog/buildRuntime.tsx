@@ -4,6 +4,7 @@ import { buildCatalog } from './buildCatalog';
 import { transformFunctions } from './transforms';
 import { layoutComponents } from './impl/layout';
 import { displayComponents } from './impl/display';
+import { terminalComponents } from './impl/terminal';
 import { inputComponents } from './impl/inputs';
 import { chartComponents } from './impl/charts';
 import { gridComponents } from './impl/grid';
@@ -28,6 +29,7 @@ export function buildRuntime({
   // FunctionComponent (no class components), so this cast is safe.
   const mergedComponents = {
     ...layoutComponents,
+    ...terminalComponents,
     ...displayComponents,
     ...inputComponents,
     ...chartComponents,

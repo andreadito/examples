@@ -171,3 +171,74 @@ export function tick(
 
   return { positions: nextPositions, ohlc: nextOhlc };
 }
+
+export interface BookLevel {
+  price: number;
+  size: number;
+}
+
+export interface OrderBook {
+  bids: BookLevel[];
+  asks: BookLevel[];
+}
+
+export interface NewsItem {
+  time: number;
+  symbol: string;
+  headline: string;
+  source: string;
+}
+
+const BOOK_LEVELS = 10;
+
+/**
+ * Synthetic market depth per symbol: levels step away from the last price by
+ * a few basis points each, with pseudo-random resting size. Regenerated every
+ * tick so ladders move like a live book.
+ */
+export function createBook(positions: Position[]): Record<string, OrderBook> {
+  const book: Record<string, OrderBook> = {};
+  for (const p of positions) {
+    const tickSize = Math.max(0.01, p.lastPrice * 0.0004);
+    const bids: BookLevel[] = [];
+    const asks: BookLevel[] = [];
+    for (let i = 1; i <= BOOK_LEVELS; i++) {
+      bids.push({
+        price: Number((p.lastPrice - tickSize * i).toFixed(2)),
+        size: Math.round(100 + Math.random() * 4000),
+      });
+      asks.push({
+        price: Number((p.lastPrice + tickSize * i).toFixed(2)),
+        size: Math.round(100 + Math.random() * 4000),
+      });
+    }
+    book[p.symbol] = { bids, asks };
+  }
+  return book;
+}
+
+const HEADLINE_TEMPLATES: Array<(symbol: string, sector: string) => string> = [
+  (s) => `${s} breaks through intraday resistance on heavy volume`,
+  (s) => `Options desk reports unusual ${s} call activity into the close`,
+  (s, sec) => `${sec} rotation accelerates; ${s} leads sector movers`,
+  (s) => `${s} short interest ticks higher, borrow rates firming`,
+  (s) => `Block trade crosses in ${s}; institutional accumulation flagged`,
+  (s) => `${s} implied vol bid ahead of earnings window`,
+  (s, sec) => `Desk color: real-money buyers active in ${sec}, ${s} favored`,
+  (s) => `${s} tests VWAP from above; algos defending the level`,
+];
+
+const SOURCES = ['DESK', 'WIRE', 'FLOW', 'SQUAWK'];
+
+/** Prepend one synthetic headline, keeping the newest MAX items. */
+export function nextNews(news: NewsItem[], positions: Position[], max = 20): NewsItem[] {
+  const p = positions[Math.floor(Math.random() * positions.length)];
+  const template = HEADLINE_TEMPLATES[Math.floor(Math.random() * HEADLINE_TEMPLATES.length)];
+  const item: NewsItem = {
+    time: Date.now(),
+    symbol: p.symbol,
+    headline: template(p.symbol, p.sector),
+    source: SOURCES[Math.floor(Math.random() * SOURCES.length)],
+  };
+  return [item, ...news].slice(0, max);
+}

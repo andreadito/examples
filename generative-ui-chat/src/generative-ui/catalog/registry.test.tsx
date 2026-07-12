@@ -120,9 +120,56 @@ describe('registry smoke test', () => {
     expect(screen.getAllByText(/2\.40%/).length).toBeGreaterThanOrEqual(1);
   });
 
+
+  it('renders QuoteBoard, OrderBook and NewsFeed terminal components', () => {
+    const { catalog, registry } = buildRuntime({ emit: vi.fn() });
+    const spec = {
+      root: 'row-1',
+      elements: {
+        'row-1': { type: 'Stack', props: { direction: 'column', gap: 1, wrap: null, sx: null }, children: ['q-1', 'ob-1', 'nf-1'], visible: true },
+        'q-1': {
+          type: 'QuoteBoard',
+          props: { data: [{ symbol: 'AAPL', lastPrice: 190.5, pnlPct: 2.4 }], symbolKey: 'symbol', priceKey: 'lastPrice', changeKey: 'pnlPct' },
+          visible: true,
+          children: [],
+        },
+        'ob-1': {
+          type: 'OrderBook',
+          props: {
+            data: { bids: [{ price: 100.1, size: 500 }, { price: 100.0, size: 900 }], asks: [{ price: 100.2, size: 300 }] },
+            levels: 5,
+          },
+          visible: true,
+          children: [],
+        },
+        'nf-1': {
+          type: 'NewsFeed',
+          props: { data: [{ time: 1783860000000, symbol: 'GS', headline: 'Block trade crosses in GS', source: 'DESK' }] },
+          visible: true,
+          children: [],
+        },
+      },
+    };
+    expect(catalog.validate(spec).success).toBe(true);
+    render(
+      <StateProvider initialState={{}}>
+        <VisibilityProvider>
+          <ActionProvider handlers={{}}>
+            <Renderer spec={spec as never} registry={registry} />
+          </ActionProvider>
+        </VisibilityProvider>
+      </StateProvider>,
+    );
+    expect(screen.getByText('AAPL')).toBeInTheDocument();
+    expect(screen.getByText('$190.50')).toBeInTheDocument();
+    expect(screen.getByText('100.10')).toBeInTheDocument(); // best bid
+    expect(screen.getByText(/spread 0\.10/)).toBeInTheDocument();
+    expect(screen.getByText('Block trade crosses in GS')).toBeInTheDocument();
+  });
+
   it('registry has an implementation for every catalog component', () => {
     const { registry } = buildRuntime({ emit: vi.fn() });
-    for (const type of ['Stack', 'Box', 'Card', 'Divider', 'Typography', 'Chip', 'Alert', 'LinearProgress', 'StatTile', 'DataList', 'TickerTape', 'Tabs', 'Select', 'Slider', 'ToggleButtonGroup', 'TextField', 'Switch', 'Button', 'LineChart', 'BarChart', 'PieChart', 'Sparkline', 'DataGrid']) {
+    for (const type of ['Stack', 'Box', 'Card', 'Divider', 'Typography', 'Chip', 'Alert', 'LinearProgress', 'StatTile', 'DataList', 'TickerTape', 'QuoteBoard', 'OrderBook', 'NewsFeed', 'Tabs', 'Select', 'Slider', 'ToggleButtonGroup', 'TextField', 'Switch', 'Button', 'LineChart', 'BarChart', 'PieChart', 'Sparkline', 'DataGrid']) {
       expect(registry[type], `missing registry impl for ${type}`).toBeTruthy();
     }
   });

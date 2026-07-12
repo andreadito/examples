@@ -116,6 +116,41 @@ export const coreDefinitions = {
     description:
       'NYSE-style continuously scrolling ticker-tape banner. Cycles through rows showing label, currency value, and signed change (green up / red down arrows); pauses on hover. Place full-width at the very top of a dashboard. Example: data /data/positions, labelKey "symbol", valueKey "lastPrice", changeKey "pnlPct", changeFormat "percent".',
   },
+  QuoteBoard: {
+    props: z.object({
+      data: rows,
+      symbolKey: z.string().nullish(),
+      priceKey: z.string().nullish(),
+      changeKey: z.string().nullish(),
+      minTileWidth: z.number().nullish(),
+    }),
+    description:
+      'Bloomberg-style quote board: dense grid of tiles, each showing symbol, big price, and colored change. Defaults: symbolKey "symbol", priceKey "lastPrice", changeKey "pnlPct". Great as a watchlist overview.',
+  },
+  OrderBook: {
+    props: z.object({
+      data: z.record(z.string(), z.any()).nullish(),
+      bids: rows.nullish(),
+      asks: rows.nullish(),
+      priceKey: z.string().nullish(),
+      sizeKey: z.string().nullish(),
+      levels: z.number().nullish(),
+    }),
+    description:
+      'Market depth ladder (order book): bids left (green), asks right (red), proportional depth bars, spread in the header. Bind data to /data/book/<SYMBOL> (an object with bids/asks arrays of {price,size}); levels defaults to 8.',
+  },
+  NewsFeed: {
+    props: z.object({
+      data: rows,
+      titleKey: z.string().nullish(),
+      timeKey: z.string().nullish(),
+      sourceKey: z.string().nullish(),
+      symbolKey: z.string().nullish(),
+      maxItems: z.number().nullish(),
+    }),
+    description:
+      'Timestamped market news headlines with symbol tags and source. Bind data to /data/news (rows with headline/time/symbol/source). Newest first; maxItems defaults to 12.',
+  },
   Tabs: {
     props: z.object({ value: z.string(), labels: z.array(z.string()) }),
     slots: ['default'],
