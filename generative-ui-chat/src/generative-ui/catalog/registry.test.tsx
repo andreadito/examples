@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { Renderer, StateProvider, VisibilityProvider, ActionProvider } from '@json-render/react';
+import { Renderer, StateProvider, VisibilityProvider, ActionProvider, JSONUIProvider } from '@json-render/react';
 import { buildRuntime } from './buildRuntime';
 
 // NOTE (library finding, Task 6): `ElementRenderer` inside `@json-render/react`'s
@@ -165,6 +165,58 @@ describe('registry smoke test', () => {
     expect(screen.getByText('100.10')).toBeInTheDocument(); // best bid
     expect(screen.getByText(/spread 0\.10/)).toBeInTheDocument();
     expect(screen.getByText('Block trade crosses in GS')).toBeInTheDocument();
+  });
+
+
+  it('resolves $computed transforms with live $state args (threshold filter path)', () => {
+    const { catalog, registry, functions } = buildRuntime({ emit: vi.fn() });
+    const spec = {
+      root: 'list-1',
+      elements: {
+        'list-1': {
+          type: 'DataList',
+          props: {
+            data: {
+              $computed: 'filterBy',
+              args: {
+                data: { $state: '/data/positions' },
+                field: 'pnl',
+                op: 'gt',
+                value: { $state: '/threshold' },
+              },
+            },
+            primaryField: 'symbol',
+            secondaryField: null,
+            valueField: 'pnl',
+            valueFormat: 'number',
+          },
+          visible: true,
+          children: [],
+        },
+      },
+    };
+    expect(catalog.validate(spec).success).toBe(true);
+    render(
+      <JSONUIProvider
+        registry={registry}
+        functions={functions}
+        initialState={{
+          threshold: 100,
+          data: {
+            positions: [
+              { symbol: 'WIN', pnl: 500 },
+              { symbol: 'FLAT', pnl: 100 },
+              { symbol: 'LOSE', pnl: -50 },
+            ],
+          },
+        }}
+      >
+        <Renderer spec={spec as never} registry={registry} />
+      </JSONUIProvider>,
+    );
+    expect(screen.getByText('WIN')).toBeInTheDocument();
+    expect(screen.queryByText('FLAT')).not.toBeInTheDocument(); // gt is strict
+    expect(screen.queryByText('LOSE')).not.toBeInTheDocument();
   });
 
   it('registry has an implementation for every catalog component', () => {

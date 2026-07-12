@@ -115,7 +115,7 @@ export const transformDeclarations: Record<string, { description: string }> = {
   },
   filterBy: {
     description:
-      'Filter rows. Example: {"$computed":"filterBy","args":{"data":{"$state":"/data/positions"},"field":"sector","op":"eq","value":"Tech"}} (op: eq|neq|gt|lt|contains).',
+      'Filter rows by comparison — op is one of eq, neq, gt, lt, contains, and `value` can be a LIVE state binding (e.g. from a slider or select). Threshold example: {"$computed":"filterBy","args":{"data":{"$state":"/data/positions"},"field":"pnl","op":"gt","value":{"$state":"/pnlThreshold"}}}. Exact-match example: {"$computed":"filterBy","args":{"data":{"$state":"/data/positions"},"field":"sector","op":"eq","value":"Tech"}}.',
   },
   topN: {
     description:
