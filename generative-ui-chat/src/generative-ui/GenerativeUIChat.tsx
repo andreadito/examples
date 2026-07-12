@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, CircularProgress, Stack, Typography } from '@mui/material';
+import { Box, CircularProgress, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import DataObjectIcon from '@mui/icons-material/DataObject';
 import { JSONUIProvider, Renderer } from '@json-render/react';
 import { ChatBox } from '@mui/x-chat';
 import type { ChatAdapter } from '@mui/x-chat/headless';
@@ -13,6 +14,7 @@ import type { ChatTurn, GenerateResult } from './llm/generate';
 import { describeData } from './llm/describeData';
 import { createStrictValidator, mergedDefinitions } from './llm/strictValidate';
 import { CanvasErrorBoundary } from './CanvasErrorBoundary';
+import { DebugPanel } from './DebugPanel';
 
 export interface GenerativeUIChatProps {
   /** Live data; written to state under /data on every change. */
@@ -25,6 +27,8 @@ export interface GenerativeUIChatProps {
   extensions?: CatalogExtension[];
   /** Proxy endpoint the generation loop calls. @default '/api/claude' */
   endpoint?: string;
+  /** Show the spec/state inspector toggle on the canvas. @default true */
+  debug?: boolean;
   onSpecChange?: (spec: object | null) => void;
   onStateChange?: (state: Record<string, unknown>) => void;
   onEvent?: (name: string, payload?: Record<string, unknown>) => void;
@@ -53,7 +57,7 @@ function isTextPart(part: { type: string }): part is { type: 'text'; text: strin
  * errors.
  */
 export function GenerativeUIChat(props: GenerativeUIChatProps) {
-  const { data, dataDescription, stateStore, extensions, endpoint = '/api/claude', onSpecChange, onStateChange, onEvent, onError } = props;
+  const { data, dataDescription, stateStore, extensions, endpoint = '/api/claude', debug = true, onSpecChange, onStateChange, onEvent, onError } = props;
 
   // 1. Store: caller's or default jotai; stable for component lifetime.
   const storeRef = useRef<StateStore | undefined>(undefined);
@@ -167,10 +171,24 @@ export function GenerativeUIChat(props: GenerativeUIChatProps) {
     [],
   );
 
-  // 7. Layout: canvas (flex 1) + chat panel (fixed 380px), both height 100%.
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+
+  // 7. Layout: canvas (flex 1) + optional inspector + chat panel (fixed 380px).
   return (
     <Stack direction="row" sx={{ height: '100%', minHeight: 480 }}>
-      <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+      <Box sx={{ flex: 1, overflow: 'auto', p: 2, position: 'relative' }}>
+        {debug ? (
+          <Tooltip title="Inspect generated spec & live state">
+            <IconButton
+              size="small"
+              aria-label="open inspector"
+              onClick={() => setInspectorOpen((open) => !open)}
+              sx={{ position: 'absolute', top: 6, right: 6, zIndex: 2, color: inspectorOpen ? 'primary.main' : 'text.secondary' }}
+            >
+              <DataObjectIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+        ) : null}
         <CanvasErrorBoundary onError={onError} resetKey={spec}>
           <JSONUIProvider registry={runtime.registry} store={store} handlers={actionHandlers} functions={runtime.functions}>
             <Suspense fallback={<CircularProgress />}>
@@ -179,6 +197,11 @@ export function GenerativeUIChat(props: GenerativeUIChatProps) {
           </JSONUIProvider>
         </CanvasErrorBoundary>
       </Box>
+      {debug && inspectorOpen ? (
+        <Box sx={{ width: 360, flexShrink: 0, minWidth: 0 }}>
+          <DebugPanel spec={spec} store={store} onClose={() => setInspectorOpen(false)} />
+        </Box>
+      ) : null}
       <Box sx={{ width: 380, borderLeft: '1px solid', borderColor: 'divider' }}>
         <ChatBox
           adapter={adapter}

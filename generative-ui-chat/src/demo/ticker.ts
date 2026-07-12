@@ -242,3 +242,130 @@ export function nextNews(news: NewsItem[], positions: Position[], max = 20): New
   };
   return [item, ...news].slice(0, max);
 }
+
+// ---------------------------------------------------------------------------
+// Multi-desk mock data: FX, rates, and credit desks alongside the equity book.
+// Each desk speaks its own market vernacular (pips, bps, DV01, CDS spreads) so
+// generated UIs can be exercised against realistically-shaped desk data.
+// ---------------------------------------------------------------------------
+
+export interface FxRow {
+  pair: string;
+  rate: number;
+  dayPct: number;
+  changePips: number;
+  notionalM: number;
+  pnl: number;
+}
+
+export interface RateRow {
+  instrument: string;
+  tenor: string;
+  yieldPct: number;
+  changeBps: number;
+  dv01k: number;
+  pnl: number;
+}
+
+export interface CreditRow {
+  name: string;
+  kind: 'index' | 'single-name';
+  spreadBps: number;
+  changeBps: number;
+  notionalM: number;
+  pnl: number;
+}
+
+const FX_PAIRS: Array<{ pair: string; base: number; pipSize: number }> = [
+  { pair: 'EUR/USD', base: 1.0845, pipSize: 0.0001 },
+  { pair: 'USD/JPY', base: 151.32, pipSize: 0.01 },
+  { pair: 'GBP/USD', base: 1.2705, pipSize: 0.0001 },
+  { pair: 'USD/CHF', base: 0.8823, pipSize: 0.0001 },
+  { pair: 'AUD/USD', base: 0.6588, pipSize: 0.0001 },
+  { pair: 'USD/CAD', base: 1.3652, pipSize: 0.0001 },
+  { pair: 'EUR/GBP', base: 0.8536, pipSize: 0.0001 },
+  { pair: 'USD/CNH', base: 7.2418, pipSize: 0.0001 },
+];
+
+const RATE_INSTRUMENTS: Array<{ instrument: string; tenor: string; base: number }> = [
+  { instrument: 'UST 2Y', tenor: '2Y', base: 4.62 },
+  { instrument: 'UST 5Y', tenor: '5Y', base: 4.31 },
+  { instrument: 'UST 10Y', tenor: '10Y', base: 4.22 },
+  { instrument: 'UST 30Y', tenor: '30Y', base: 4.45 },
+  { instrument: 'Bund 10Y', tenor: '10Y', base: 2.38 },
+  { instrument: 'Gilt 10Y', tenor: '10Y', base: 4.05 },
+  { instrument: 'JGB 10Y', tenor: '10Y', base: 1.02 },
+  { instrument: 'SOFR Swap 5Y', tenor: '5Y', base: 4.08 },
+];
+
+const CREDIT_NAMES: Array<{ name: string; kind: CreditRow['kind']; base: number }> = [
+  { name: 'CDX.NA.IG 43', kind: 'index', base: 52 },
+  { name: 'CDX.NA.HY 43', kind: 'index', base: 332 },
+  { name: 'iTraxx Europe 42', kind: 'index', base: 57 },
+  { name: 'iTraxx Crossover 42', kind: 'index', base: 305 },
+  { name: 'F 5Y CDS', kind: 'single-name', base: 148 },
+  { name: 'BA 5Y CDS', kind: 'single-name', base: 121 },
+  { name: 'T 5Y CDS', kind: 'single-name', base: 88 },
+  { name: 'OXY 5Y CDS', kind: 'single-name', base: 104 },
+];
+
+export function createFxDesk(): FxRow[] {
+  return FX_PAIRS.map(({ pair, base }) => ({
+    pair,
+    rate: base,
+    dayPct: 0,
+    changePips: 0,
+    notionalM: Math.round(5 + Math.random() * 95),
+    pnl: 0,
+  }));
+}
+
+export function createRatesDesk(): RateRow[] {
+  return RATE_INSTRUMENTS.map(({ instrument, tenor, base }) => ({
+    instrument,
+    tenor,
+    yieldPct: base,
+    changeBps: 0,
+    dv01k: Math.round(5 + Math.random() * 95),
+    pnl: 0,
+  }));
+}
+
+export function createCreditDesk(): CreditRow[] {
+  return CREDIT_NAMES.map(({ name, kind, base }) => ({
+    name,
+    kind,
+    spreadBps: base,
+    changeBps: 0,
+    notionalM: Math.round(5 + Math.random() * 45),
+    pnl: 0,
+  }));
+}
+
+const walk = (magnitudePct: number) => (Math.random() - 0.5) * 2 * magnitudePct;
+
+/** One tick of the non-equity desks; pure — returns fresh rows. */
+export function tickDesks(fx: FxRow[], rates: RateRow[], credit: CreditRow[]) {
+  const nextFx = fx.map((row) => {
+    const ref = FX_PAIRS.find((p) => p.pair === row.pair) ?? { base: row.rate, pipSize: 0.0001 };
+    const rate = Number((row.rate * (1 + walk(0.0008))).toFixed(row.pair.includes('JPY') ? 2 : 4));
+    const changePips = Number(((rate - ref.base) / ref.pipSize).toFixed(1));
+    const dayPct = Number((((rate - ref.base) / ref.base) * 100).toFixed(2));
+    return { ...row, rate, changePips, dayPct, pnl: Number((changePips * row.notionalM * 8).toFixed(0)) };
+  });
+  const nextRates = rates.map((row) => {
+    const ref = RATE_INSTRUMENTS.find((r) => r.instrument === row.instrument) ?? { base: row.yieldPct };
+    const yieldPct = Number((row.yieldPct + walk(0.002)).toFixed(3));
+    const changeBps = Number(((yieldPct - ref.base) * 100).toFixed(1));
+    // Long duration loses when yields rise: pnl = -change * DV01.
+    return { ...row, yieldPct, changeBps, pnl: Number((-changeBps * row.dv01k * 10).toFixed(0)) };
+  });
+  const nextCredit = credit.map((row) => {
+    const ref = CREDIT_NAMES.find((c) => c.name === row.name) ?? { base: row.spreadBps };
+    const spreadBps = Number((row.spreadBps * (1 + walk(0.004))).toFixed(1));
+    const changeBps = Number((spreadBps - ref.base).toFixed(1));
+    // Protection seller loses as spreads widen.
+    return { ...row, spreadBps, changeBps, pnl: Number((-changeBps * row.notionalM * 45).toFixed(0)) };
+  });
+  return { fx: nextFx, rates: nextRates, credit: nextCredit };
+}

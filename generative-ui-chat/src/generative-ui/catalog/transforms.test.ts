@@ -85,4 +85,10 @@ describe('transforms', () => {
       { key: 'Energy', value: 30 },
     ]);
   });
+
+  it('sum returns a scalar total (with field aliases)', () => {
+    expect(transformFunctions.sum({ data: rows, field: 'pnl' })).toBe(80);
+    expect(transformFunctions.sum({ data: rows, value: 'pnl' })).toBe(80);
+    expect(transformFunctions.sum({ data: 'nonsense', field: 'pnl' })).toBe(0);
+  });
 });

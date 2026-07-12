@@ -81,6 +81,10 @@ const arg = (a: Args, ...names: string[]): unknown => {
 };
 
 export const transformFunctions: Record<string, (args: Args) => unknown> = {
+  sum: (a) => {
+    const field = String(arg(a, 'field', 'value', 'key') ?? '');
+    return asRows(a.data).reduce((total, row) => total + num(row[field]), 0);
+  },
   aggregateBy: (a) =>
     aggregateBy(
       asRows(a.data),
@@ -97,6 +101,10 @@ export const transformFunctions: Record<string, (args: Args) => unknown> = {
 };
 
 export const transformDeclarations: Record<string, { description: string }> = {
+  sum: {
+    description:
+      'Sum a numeric field across rows, returning a single number — use for StatTile values. Example: {"$computed":"sum","args":{"data":{"$state":"/data/fx"},"field":"pnl"}}.',
+  },
   aggregateBy: {
     description:
       'Group rows and aggregate. Returns [{key, value}]. Example: {"$computed":"aggregateBy","args":{"data":{"$state":"/data/positions"},"by":"sector","field":"pnl","op":"sum"}} (op: sum|avg|min|max|count). Chart it with xKey "key" and yKeys ["value"].',

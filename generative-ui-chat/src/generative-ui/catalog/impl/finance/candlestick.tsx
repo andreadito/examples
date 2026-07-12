@@ -39,7 +39,7 @@ function buildOption(rows: OhlcRow[], showVolume: boolean, colors: UpDown): ECha
       xAxis: { type: 'category', data: times, boundaryGap: true },
       yAxis: { type: 'value', scale: true },
       series: [{ type: 'candlestick', data: candles, ...candleStyle }],
-      tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, valueFormatter: (v) => (typeof v === 'number' ? v.toFixed(2) : String(v ?? '')) },
     };
   }
 
@@ -60,7 +60,7 @@ function buildOption(rows: OhlcRow[], showVolume: boolean, colors: UpDown): ECha
       { type: 'candlestick', data: candles, xAxisIndex: 0, yAxisIndex: 0, ...candleStyle },
       { type: 'bar', data: volumes, xAxisIndex: 1, yAxisIndex: 1 },
     ],
-    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, valueFormatter: (v) => (typeof v === 'number' ? v.toFixed(2) : String(v ?? '')) },
   };
 }
 

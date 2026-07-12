@@ -57,14 +57,14 @@ function PositionsTable({ positions }: { positions: ReturnType<typeof useTicker>
 }
 
 export function App() {
-  const { positions, ohlc, book, news, asOf } = useTicker(1000);
+  const { positions, ohlc, book, news, fx, rates, credit, asOf } = useTicker(1000);
   const { entries, log } = useCallbackLog();
   const [mode, setMode] = useState<'light' | 'dark'>('dark');
   const theme = useMemo(() => createTradingTheme(mode), [mode]);
 
   const data = useMemo(
-    () => ({ positions, ohlc, book, news, asOf, totalPnl: positions.reduce((sum, p) => sum + p.pnl, 0) }),
-    [positions, ohlc, book, news, asOf],
+    () => ({ positions, ohlc, book, news, fx, rates, credit, asOf, totalPnl: positions.reduce((sum, p) => sum + p.pnl, 0) }),
+    [positions, ohlc, book, news, fx, rates, credit, asOf],
   );
 
   return (
@@ -94,7 +94,7 @@ export function App() {
           <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
             <GenerativeUIChat
               data={data}
-              dataDescription="Live trading desk: positions, per-symbol OHLC history, per-symbol order-book depth (book), and streaming news headlines"
+              dataDescription="Multi-desk live trading data: equity positions (positions, with per-symbol ohlc + book depth), FX desk (fx: pairs/rates/pips), rates desk (rates: yields/bps/DV01), credit desk (credit: CDS spreads in bps), streaming news"
               onSpecChange={(s) => {
                 // Full spec at debug level — invaluable when a generated UI misbehaves.
                 console.debug('[demo] spec', JSON.stringify(s));

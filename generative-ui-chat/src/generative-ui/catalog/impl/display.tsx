@@ -53,6 +53,10 @@ function LinearProgressImpl({ props }: JsonRenderComponentProps) {
 }
 
 function StatTileImpl({ props }: JsonRenderComponentProps) {
+  // A $computed that resolves to an array/object (e.g. aggregateBy instead of
+  // sum) must not render as "[object Object]" — show a placeholder instead.
+  const rawValue = props.value;
+  const displayValue = typeof rawValue === 'string' || typeof rawValue === 'number' ? rawValue : '—';
   const delta = typeof props.delta === 'number' ? props.delta : null;
   const deltaColor = delta === null ? undefined : delta >= 0 ? 'success.main' : 'error.main';
   return (
@@ -61,7 +65,7 @@ function StatTileImpl({ props }: JsonRenderComponentProps) {
         {String(props.label ?? '')}
       </MuiTypography>
       <MuiTypography variant="h5" color={tokenToMuiColor(props.color as ColorToken | null | undefined)} component="div">
-        {formatValue(props.value, (props.format as string | null | undefined) ?? null)}
+        {formatValue(displayValue, (props.format as string | null | undefined) ?? null)}
       </MuiTypography>
       {delta !== null ? (
         <Stack direction="row" spacing={0.5} alignItems="center">
