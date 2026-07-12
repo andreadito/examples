@@ -6,6 +6,12 @@ constrained to a component catalog** (never raw HTML/JS); the canvas renders
 it bound to **your live data**, which keeps ticking through every generated
 view. Follow-up messages edit the existing UI instead of rebuilding it.
 
+The LLM is optional. Specs are plain JSON, and the rendering half ships as
+its own component: `GenerativeUICanvas` renders hand-written or externally
+generated specs with identical validation and live bindings, and
+`createAuthoringContext` exports the catalog contract for authors outside
+this library — see [§9](#9-no-llm-required-the-headless-canvas).
+
 ```
 your data ──► <GenerativeUIChat data={...}>
                     │  chat prompt + data schema + catalog
@@ -271,6 +277,25 @@ renders nothing, so hand-authored JSON gets the same safety guarantees as
 model output. Bindings, transforms, extensions, theming, and the inspector
 all behave identically. (`GenerativeUIChat` is literally this canvas plus a
 chat panel.)
+
+**See it live:** the demo app's CHAT/CANVAS toggle (AppBar) swaps the full
+chat component for a `GenerativeUICanvas` rendering
+`src/demo/handAuthoredSpec.ts` — a hand-written spec with KPI tiles, a
+slider-driven live `filterBy` grid, and a sector chart, all bound to the
+same ticking desk data. That file doubles as a reference for the authoring
+dialect.
+
+`GenerativeUICanvasProps`:
+
+| Prop | Type | Default | Purpose |
+|---|---|---|---|
+| `spec` | `object \| null` | required | The spec to render (controlled — pass a new one to re-render); validated on every change |
+| `data` | `Record<string, unknown>` | required | Live data, written to `/data` — same contract as the chat component |
+| `stateStore` | `StateStore` | jotai store | Same as the chat component |
+| `extensions` | `CatalogExtension[]` | `[]` | Same as the chat component |
+| `debug` | `boolean` | `false` | Inspector toggle (note: default is off here) |
+| `emptyHint` | `string` | `'No spec loaded.'` | Message shown while `spec` is null |
+| `onStateChange` / `onEvent` / `onError` | — | — | Same semantics as the chat component |
 
 ### Authoring specs elsewhere: the portable "skill"
 

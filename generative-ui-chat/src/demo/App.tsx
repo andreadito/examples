@@ -20,7 +20,8 @@ import StorageIcon from '@mui/icons-material/Storage';
 import TableRowsIcon from '@mui/icons-material/TableRows';
 import { Badge } from '@mui/material';
 import LightModeIcon from '@mui/icons-material/LightMode';
-import { GenerativeUIChat, createXStateStore } from '../generative-ui';
+import { GenerativeUIChat, GenerativeUICanvas, createXStateStore } from '../generative-ui';
+import { handAuthoredSpec } from './handAuthoredSpec';
 import { useTicker } from './useTicker';
 import { useCallbackLog, CallbackLog } from './CallbackLog';
 import { createTradingTheme } from './theme';
@@ -84,6 +85,9 @@ export function App() {
   // canvas resets — that's the honest cost of swapping the state engine).
   const [storeKind, setStoreKind] = useState<'jotai' | 'xstate'>('jotai');
   const xstateStore = useMemo(() => (storeKind === 'xstate' ? createXStateStore({}) : undefined), [storeKind]);
+  // CHAT = the full LLM loop; CANVAS = the headless GenerativeUICanvas
+  // rendering src/demo/handAuthoredSpec.ts — a spec written by hand, no LLM.
+  const [surface, setSurface] = useState<'chat' | 'canvas'>('chat');
   const { sources, values: customValues, urlErrors, addSource, removeSource } = useCustomSources();
   const [sourcesOpen, setSourcesOpen] = useState(false);
   // Raw-feed sidebar: off by default — the generated canvas is the point, and
@@ -177,6 +181,17 @@ export function App() {
             <ToggleButtonGroup
               size="small"
               exclusive
+              value={surface}
+              onChange={(_, v) => v && setSurface(v)}
+              aria-label="rendering surface"
+              sx={{ mr: 1, '& .MuiToggleButton-root': { color: 'inherit', px: 1.5, py: 0.25, fontSize: '0.6875rem' } }}
+            >
+              <ToggleButton value="chat">chat</ToggleButton>
+              <ToggleButton value="canvas">canvas</ToggleButton>
+            </ToggleButtonGroup>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
               value={storeKind}
               onChange={(_, v) => v && setStoreKind(v)}
               aria-label="state store"
@@ -203,20 +218,33 @@ export function App() {
           ) : null}
 
           <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-            <GenerativeUIChat
-              key={storeKind}
-              stateStore={xstateStore}
-              data={data}
-              dataDescription={dataDescription}
-              onSpecChange={(s) => {
-                // Full spec at debug level — invaluable when a generated UI misbehaves.
-                console.debug('[demo] spec', JSON.stringify(s));
-                log('onSpecChange', { elements: s ? Object.keys((s as { elements: object }).elements).length : 0 });
-              }}
-              onStateChange={() => log('onStateChange')}
-              onEvent={(name, payload) => log(`onEvent:${name}`, payload)}
-              onError={(e) => log('onError', { message: e.message })}
-            />
+            {surface === 'chat' ? (
+              <GenerativeUIChat
+                key={storeKind}
+                stateStore={xstateStore}
+                data={data}
+                dataDescription={dataDescription}
+                onSpecChange={(s) => {
+                  // Full spec at debug level — invaluable when a generated UI misbehaves.
+                  console.debug('[demo] spec', JSON.stringify(s));
+                  log('onSpecChange', { elements: s ? Object.keys((s as { elements: object }).elements).length : 0 });
+                }}
+                onStateChange={() => log('onStateChange')}
+                onEvent={(name, payload) => log(`onEvent:${name}`, payload)}
+                onError={(e) => log('onError', { message: e.message })}
+              />
+            ) : (
+              <GenerativeUICanvas
+                key={`canvas-${storeKind}`}
+                stateStore={xstateStore}
+                spec={handAuthoredSpec}
+                data={data}
+                debug
+                onStateChange={() => log('onStateChange')}
+                onEvent={(name, payload) => log(`onEvent:${name}`, payload)}
+                onError={(e) => log('onError', { message: e.message })}
+              />
+            )}
           </Box>
         </Box>
 
