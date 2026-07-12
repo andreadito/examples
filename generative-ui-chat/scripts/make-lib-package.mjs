@@ -1,0 +1,75 @@
+import { readFileSync, writeFileSync, copyFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+/**
+ * Assemble the publishable manifest for dist-lib/ after `vite build --config
+ * vite.lib.config.ts` and `tsc -p tsconfig.lib.json` have produced the ESM
+ * bundle and type declarations. Peer dependency versions are copied from the
+ * app's own dependency list so the published ranges always match what the
+ * demo was actually verified against.
+ */
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(here, '..');
+const app = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+
+const PEERS = [
+  'react',
+  'react-dom',
+  '@mui/material',
+  '@mui/icons-material',
+  '@emotion/react',
+  '@emotion/styled',
+  '@mui/x-chat',
+  '@mui/x-charts',
+  '@mui/x-data-grid',
+  '@json-render/core',
+  '@json-render/react',
+  '@json-render/jotai',
+  '@json-render/xstate',
+  'jotai',
+  '@xstate/store',
+  'zod',
+  'ag-grid-community',
+  'ag-grid-react',
+  'echarts',
+];
+
+const peerDependencies = {};
+for (const name of PEERS) {
+  const version = app.dependencies?.[name] ?? app.devDependencies?.[name];
+  if (!version) {
+    console.warn(`warning: peer "${name}" not found in app dependencies — skipped`);
+    continue;
+  }
+  peerDependencies[name] = version;
+}
+
+const manifest = {
+  name: '@vaultgradient/generative-ui-chat',
+  version: '0.1.0',
+  description:
+    'Chat-driven generative UI for live data: Claude generates json-render specs constrained to a MUI component catalog, with pluggable jotai/xstate state and a built-in spec/state inspector.',
+  license: 'MIT',
+  type: 'module',
+  main: './index.js',
+  module: './index.js',
+  types: './types/generative-ui/index.d.ts',
+  exports: {
+    '.': {
+      types: './types/generative-ui/index.d.ts',
+      import: './index.js',
+    },
+  },
+  sideEffects: false,
+  peerDependencies,
+};
+
+const out = path.join(root, 'dist-lib');
+writeFileSync(path.join(out, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+
+const docs = path.join(root, 'docs', 'INTEGRATION.md');
+if (existsSync(docs)) copyFileSync(docs, path.join(out, 'README.md'));
+
+console.log(`dist-lib/package.json written (${Object.keys(peerDependencies).length} peers)`);

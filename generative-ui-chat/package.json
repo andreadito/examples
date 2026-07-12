@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "typecheck": "tsc -b --noEmit && tsc --noEmit -p server/tsconfig.json"
+    "typecheck": "tsc -b --noEmit && tsc --noEmit -p server/tsconfig.json",
+    "build:lib": "vite build --config vite.lib.config.ts && tsc -p tsconfig.lib.json && node scripts/make-lib-package.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",

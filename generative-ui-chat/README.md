@@ -8,8 +8,14 @@ via `$state` expressions. The spec is validated before it ever reaches the
 DOM.
 
 The repo ships both the component (`src/generative-ui`) and a small demo app
-(`src/demo`) — a simulated trading desk with a live position table and OHLC
-history — that exercises it end to end.
+(`src/demo`) — a simulated multi-desk trading floor (equity, FX, rates,
+credit) with live positions, OHLC history, order-book depth, and a news feed
+— that exercises it end to end.
+
+**Integrating this into your own application?** Start with the
+[Integration Guide](docs/INTEGRATION.md) — install, proxy setup, quickstart,
+full props reference, catalog extension, theming, and troubleshooting.
+`npm run build:lib` produces a publish-ready package in `dist-lib/`.
 
 ## What it looks like in use
 
@@ -207,9 +213,22 @@ the prompt.
 ## Testing
 
 ```bash
-npm test        # vitest — 63 tests across 14 files
+npm test           # vitest unit/integration suite
 npm run typecheck  # tsc -b (app) + tsc -p server/tsconfig.json (proxy)
 ```
+
+## Building the library
+
+```bash
+npm run build:lib  # → dist-lib/: ESM bundle + .d.ts types + publish-ready package.json
+```
+
+The build externalizes every dependency (consumers bring their own React/MUI/
+json-render/etc. as peers), emits type declarations via `tsc -p
+tsconfig.lib.json`, and generates `dist-lib/package.json` with peer ranges
+copied from this repo's own verified dependency list
+(`scripts/make-lib-package.mjs`). `docs/INTEGRATION.md` is copied in as the
+package README.
 
 ## Known limitations
 
@@ -224,11 +243,6 @@ npm run typecheck  # tsc -b (app) + tsc -p server/tsconfig.json (proxy)
   described above); it is not a bug in this library's code, but a real gap in
   the current `@json-render/core` behavior worth knowing about before
   relying on `catalog.validate()` alone elsewhere.
-- **No live end-to-end pass against the real Anthropic API yet.** All 63
-  tests exercise the catalog, validator, transforms, state stores, and
-  generation loop against fakes/mocks; the browser-driven scenario pass
-  (typing real prompts into the running demo against a live model) is
-  deferred pending an available API key and is not part of this commit.
 - **The Express proxy (`server/app.ts`) is a local dev server, not
   production-hardened**: it enables open CORS (`cors()` with no origin
   allowlist) and has no rate limiting. Do not deploy it as-is — put a real
