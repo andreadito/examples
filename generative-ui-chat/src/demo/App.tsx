@@ -32,6 +32,26 @@ const APP_BAR_HEIGHT = 44;
 const LOG_HEIGHT = 110;
 const DISABLED_DATASETS_KEY = 'generative-ui-demo/disabled-datasets';
 
+// The AppBar is a dark terminal bar in BOTH color schemes, so its toggle
+// buttons can't use palette-driven colors: in light mode MUI's defaults give
+// them near-black selected text and rgba(0,0,0,.12) borders — invisible on
+// the dark bar. Style them for the dark surface explicitly.
+const appBarToggleSx = {
+  '& .MuiToggleButton-root': {
+    color: 'rgba(255,255,255,0.6)',
+    borderColor: 'rgba(255,255,255,0.22)',
+    px: 1.5,
+    py: 0.25,
+    fontSize: '0.6875rem',
+    '&:hover': { backgroundColor: 'rgba(255,255,255,0.08)' },
+    '&.Mui-selected': {
+      color: '#fff',
+      backgroundColor: 'rgba(255,255,255,0.14)',
+      '&:hover': { backgroundColor: 'rgba(255,255,255,0.2)' },
+    },
+  },
+} as const;
+
 const DESK_DESCRIPTIONS: Record<string, string> = {
   positions: 'equity positions (positions)',
   ohlc: 'per-symbol OHLC history (ohlc)',
@@ -184,7 +204,7 @@ export function App() {
               value={surface}
               onChange={(_, v) => v && setSurface(v)}
               aria-label="rendering surface"
-              sx={{ mr: 1, '& .MuiToggleButton-root': { color: 'inherit', px: 1.5, py: 0.25, fontSize: '0.6875rem' } }}
+              sx={{ mr: 1, ...appBarToggleSx }}
             >
               <ToggleButton value="chat">chat</ToggleButton>
               <ToggleButton value="canvas">canvas</ToggleButton>
@@ -195,7 +215,7 @@ export function App() {
               value={storeKind}
               onChange={(_, v) => v && setStoreKind(v)}
               aria-label="state store"
-              sx={{ mr: 1.5, '& .MuiToggleButton-root': { color: 'inherit', px: 1.5, py: 0.25, fontSize: '0.6875rem' } }}
+              sx={{ mr: 1.5, ...appBarToggleSx }}
             >
               <ToggleButton value="jotai">jotai</ToggleButton>
               <ToggleButton value="xstate">xstate</ToggleButton>
