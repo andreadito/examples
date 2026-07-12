@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import StorageIcon from '@mui/icons-material/Storage';
+import TableRowsIcon from '@mui/icons-material/TableRows';
 import { Badge } from '@mui/material';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import { GenerativeUIChat, createXStateStore } from '../generative-ui';
@@ -74,6 +75,9 @@ export function App() {
   const xstateStore = useMemo(() => (storeKind === 'xstate' ? createXStateStore({}) : undefined), [storeKind]);
   const { sources, values: customValues, urlErrors, addSource, removeSource } = useCustomSources();
   const [sourcesOpen, setSourcesOpen] = useState(false);
+  // Raw-feed sidebar: off by default — the generated canvas is the point, and
+  // the inspector's STATE tab shows the same data. Toggle from the AppBar.
+  const [feedOpen, setFeedOpen] = useState(false);
 
   const data = useMemo(
     () => ({
@@ -100,6 +104,14 @@ export function App() {
             <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
               Trading Desk — Generative UI demo
             </Typography>
+            <IconButton
+              color="inherit"
+              aria-label="toggle raw feed table"
+              onClick={() => setFeedOpen((open) => !open)}
+              sx={{ mr: 0.5, opacity: feedOpen ? 1 : 0.6 }}
+            >
+              <TableRowsIcon fontSize="small" />
+            </IconButton>
             <IconButton color="inherit" aria-label="custom data sources" onClick={() => setSourcesOpen(true)} sx={{ mr: 0.5 }}>
               <Badge badgeContent={sources.length} color="primary">
                 <StorageIcon fontSize="small" />
@@ -127,9 +139,11 @@ export function App() {
         </AppBar>
 
         <Box sx={{ display: 'flex', flex: 1, minHeight: 0 }}>
-          <Box sx={{ width: 320, flexShrink: 0, borderRight: '1px solid', borderColor: 'divider', overflow: 'auto' }}>
-            <PositionsTable positions={positions} />
-          </Box>
+          {feedOpen ? (
+            <Box sx={{ width: 320, flexShrink: 0, borderRight: '1px solid', borderColor: 'divider', overflow: 'auto' }}>
+              <PositionsTable positions={positions} />
+            </Box>
+          ) : null}
 
           <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
             <GenerativeUIChat
