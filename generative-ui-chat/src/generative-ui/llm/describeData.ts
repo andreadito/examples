@@ -38,6 +38,15 @@ function describeArray(path: string, arr: unknown[]): string[] {
   return lines;
 }
 
+/**
+ * RFC 6901 JSON-pointer token escaping. Keys can contain `/` (e.g. an API
+ * returning bars keyed by "BTC/USD") — advertised unescaped, the model would
+ * copy a pointer that resolves to the wrong path.
+ */
+function escapeToken(key: string): string {
+  return key.replace(/~/g, '~0').replace(/\//g, '~1');
+}
+
 function describeValue(path: string, value: unknown): string[] {
   if (Array.isArray(value)) {
     return describeArray(path, value);
@@ -45,7 +54,7 @@ function describeValue(path: string, value: unknown): string[] {
   if (value && typeof value === 'object') {
     const lines = [`${path}: record`];
     for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-      lines.push(...describeValue(`${path}/${key}`, val));
+      lines.push(...describeValue(`${path}/${escapeToken(key)}`, val));
     }
     return lines;
   }
@@ -64,7 +73,7 @@ export function describeData(data: unknown, dataDescription?: string): string {
   if (dataDescription) lines.push(dataDescription);
   if (data && typeof data === 'object' && !Array.isArray(data)) {
     for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
-      lines.push(...describeValue(`/data/${key}`, value));
+      lines.push(...describeValue(`/data/${escapeToken(key)}`, value));
     }
   } else {
     lines.push(...describeValue('/data', data));

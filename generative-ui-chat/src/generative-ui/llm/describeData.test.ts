@@ -19,4 +19,12 @@ describe('describeData', () => {
   it('prepends the human description when provided', () => {
     expect(describeData({ a: [] }, 'Open trading positions')).toContain('Open trading positions');
   });
+
+  it('escapes / and ~ in keys as RFC 6901 pointer tokens', () => {
+    // Real-world shape: Alpaca crypto bars keyed by "BTC/USD".
+    const out = describeData({ crypto: { bars: { 'BTC/USD': [{ c: 63813.65, t: 't' }] }, next_page_token: 'x' } });
+    expect(out).toContain('/data/crypto/bars/BTC~1USD: array, 1 rows');
+    expect(out).not.toContain('/data/crypto/bars/BTC/USD');
+    expect(describeData({ 'a~b': [] })).toContain('/data/a~0b');
+  });
 });

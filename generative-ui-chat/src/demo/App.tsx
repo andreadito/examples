@@ -79,6 +79,17 @@ export function App() {
   // the inspector's STATE tab shows the same data. Toggle from the AppBar.
   const [feedOpen, setFeedOpen] = useState(false);
 
+  // Surface user-added sources in the prompt: without this, a vague ask
+  // ("build me something") gravitates to the richly described desk feeds
+  // and never touches data the user just plugged in.
+  const dataDescription = useMemo(() => {
+    const base =
+      'Multi-desk live trading data: equity positions (positions, with per-symbol ohlc + book depth), FX desk (fx: pairs/rates/pips), rates desk (rates: yields/bps/DV01), credit desk (credit: CDS spreads in bps), streaming news';
+    const names = sources.map((s) => s.name);
+    if (names.length === 0) return base;
+    return `${base}. The user also connected their own data sources — prefer these when relevant: ${names.join(', ')}`;
+  }, [sources]);
+
   const data = useMemo(
     () => ({
       positions,
@@ -150,7 +161,7 @@ export function App() {
               key={storeKind}
               stateStore={xstateStore}
               data={data}
-              dataDescription="Multi-desk live trading data: equity positions (positions, with per-symbol ohlc + book depth), FX desk (fx: pairs/rates/pips), rates desk (rates: yields/bps/DV01), credit desk (credit: CDS spreads in bps), streaming news"
+              dataDescription={dataDescription}
               onSpecChange={(s) => {
                 // Full spec at debug level — invaluable when a generated UI misbehaves.
                 console.debug('[demo] spec', JSON.stringify(s));
