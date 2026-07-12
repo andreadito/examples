@@ -1,6 +1,6 @@
 type Row = Record<string, unknown>;
 export type AggOp = 'sum' | 'avg' | 'min' | 'max' | 'count';
-export type FilterOp = 'eq' | 'neq' | 'gt' | 'lt' | 'contains';
+export type FilterOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains';
 
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0);
 const asRows = (v: unknown): Row[] => (Array.isArray(v) ? (v as Row[]) : []);
@@ -41,7 +41,9 @@ export function filterRows(rows: Row[], field: string, op: FilterOp, value: unkn
       case 'eq': return v === value || String(v) === String(value);
       case 'neq': return v !== value && String(v) !== String(value);
       case 'gt': return num(v) > num(value);
+      case 'gte': return num(v) >= num(value);
       case 'lt': return num(v) < num(value);
+      case 'lte': return num(v) <= num(value);
       case 'contains': return String(v).toLowerCase().includes(String(value).toLowerCase());
     }
   });
@@ -64,7 +66,7 @@ export function withPctChange(rows: Row[], field: string) {
 type Args = Record<string, unknown>;
 
 const AGG_OPS: readonly AggOp[] = ['sum', 'avg', 'min', 'max', 'count'];
-const FILTER_OPS: readonly FilterOp[] = ['eq', 'neq', 'gt', 'lt', 'contains'];
+const FILTER_OPS: readonly FilterOp[] = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains'];
 
 const asAggOp = (v: unknown): AggOp => (AGG_OPS.includes(v as AggOp) ? (v as AggOp) : 'sum');
 const asFilterOp = (v: unknown): FilterOp => (FILTER_OPS.includes(v as FilterOp) ? (v as FilterOp) : 'eq');
@@ -93,8 +95,29 @@ export const transformFunctions: Record<string, (args: Args) => unknown> = {
       asAggOp(a.op),
     ),
   sortBy: (a) => sortRows(asRows(a.data), String(arg(a, 'field', 'key', 'by') ?? ''), asDir(arg(a, 'dir', 'order'))),
-  filterBy: (a) =>
-    filterRows(asRows(a.data), String(arg(a, 'field', 'key', 'by') ?? ''), asFilterOp(a.op), arg(a, 'value', 'eq')),
+  filterBy: (a) => {
+    const rows = asRows(a.data);
+    const field = String(arg(a, 'field', 'key', 'by') ?? '');
+    // Comparator-key dialect (observed live, Mongo-style): {gte: <value>}
+    // instead of {op: 'gte', value: <value>}.
+    let op: FilterOp | undefined;
+    let value: unknown;
+    for (const k of FILTER_OPS) {
+      if (a[k] !== undefined && a[k] !== null) {
+        op = k;
+        value = a[k];
+        break;
+      }
+    }
+    if (op === undefined) {
+      op = asFilterOp(a.op);
+      value = arg(a, 'value');
+    }
+    // An unset comparison value (e.g. a $state-bound slider nobody has touched
+    // yet) means "no filter", not "match nothing".
+    if (value === undefined || value === null) return rows;
+    return filterRows(rows, field, op, value);
+  },
   topN: (a) =>
     topN(asRows(a.data), String(arg(a, 'field', 'key', 'by') ?? ''), num(arg(a, 'n', 'count', 'limit') ?? 5), a.dir === 'asc' ? 'asc' : 'desc'),
   pctChange: (a) => withPctChange(asRows(a.data), String(arg(a, 'field', 'key') ?? '')),
@@ -115,7 +138,7 @@ export const transformDeclarations: Record<string, { description: string }> = {
   },
   filterBy: {
     description:
-      'Filter rows by comparison — op is one of eq, neq, gt, lt, contains, and `value` can be a LIVE state binding (e.g. from a slider or select). Threshold example: {"$computed":"filterBy","args":{"data":{"$state":"/data/positions"},"field":"pnl","op":"gt","value":{"$state":"/pnlThreshold"}}}. Exact-match example: {"$computed":"filterBy","args":{"data":{"$state":"/data/positions"},"field":"sector","op":"eq","value":"Tech"}}.',
+      'Filter rows by comparison — op is one of eq, neq, gt, gte, lt, lte, contains, and `value` can be a LIVE state binding (e.g. from a slider or select); an unset value passes all rows. Threshold example: {"$computed":"filterBy","args":{"data":{"$state":"/data/positions"},"field":"pnl","op":"gte","value":{"$state":"/pnlThreshold"}}}. Exact-match example: {"$computed":"filterBy","args":{"data":{"$state":"/data/positions"},"field":"sector","op":"eq","value":"Tech"}}.',
   },
   topN: {
     description:

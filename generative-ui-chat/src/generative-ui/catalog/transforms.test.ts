@@ -91,4 +91,13 @@ describe('transforms', () => {
     expect(transformFunctions.sum({ data: rows, value: 'pnl' })).toBe(80);
     expect(transformFunctions.sum({ data: 'nonsense', field: 'pnl' })).toBe(0);
   });
+
+  it('filterBy accepts comparator-key dialect, gte/lte ops, and passes all rows on unset value', () => {
+    // Mongo-style comparator key (observed live)
+    expect(transformFunctions.filterBy({ data: rows, field: 'pnl', gte: 30 })).toHaveLength(2);
+    expect(transformFunctions.filterBy({ data: rows, field: 'pnl', op: 'lte', value: 30 })).toHaveLength(2);
+    // Unset threshold (untouched slider) = no filter
+    expect(transformFunctions.filterBy({ data: rows, field: 'pnl', op: 'gte', value: undefined })).toHaveLength(3);
+    expect(transformFunctions.filterBy({ data: rows, field: 'pnl', gte: null })).toHaveLength(3);
+  });
 });
