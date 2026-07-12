@@ -1,21 +1,16 @@
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, CircularProgress, IconButton, Stack, Tooltip, Typography } from '@mui/material';
-import DataObjectIcon from '@mui/icons-material/DataObject';
-import { JSONUIProvider, Renderer } from '@json-render/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Box, Stack } from '@mui/material';
 import { ChatBox } from '@mui/x-chat';
 import type { ChatAdapter } from '@mui/x-chat/headless';
-import { buildRuntime } from './catalog/buildRuntime';
-import { financeExtensions } from './catalog/financeExtensions';
 import type { CatalogExtension } from './catalog/extension';
-import { createJotaiStore } from './state/jotaiStore';
 import type { StateStore } from './state/types';
 import { generate, FALLBACK_ASSISTANT_TEXT } from './llm/generate';
 import type { ChatTurn, GenerateResult } from './llm/generate';
 import { describeData } from './llm/describeData';
-import { createStrictValidator, mergedDefinitions } from './llm/strictValidate';
-import { CanvasErrorBoundary } from './CanvasErrorBoundary';
-import { DebugPanel } from './DebugPanel';
+import { normalizeSpec } from './llm/normalizeSpec';
 import type { TurnLogEntry } from './DebugPanel';
+import { useCanvasRuntime } from './useCanvasRuntime';
+import { CanvasView } from './CanvasView';
 
 export interface GenerativeUIChatProps {
   /** Live data; written to state under /data on every change. */
@@ -24,6 +19,14 @@ export interface GenerativeUIChatProps {
   dataDescription?: string;
   /** Caller-owned state store (e.g. `createXStateStore`). Defaults to a fresh `createJotaiStore`. */
   stateStore?: StateStore;
+  /**
+   * A previously stored spec (captured via `onSpecChange`) to render on
+   * mount. It goes through the same normalize + strict-validate pipeline as
+   * a generated spec — an invalid spec fires `onError` and leaves the canvas
+   * empty. Once rendered it is the current spec, so follow-up chat prompts
+   * edit it. Read once on mount; later changes to this prop are ignored.
+   */
+  initialSpec?: object | null;
   /** Extra catalog components. `financeExtensions` are ALWAYS included regardless of this prop. */
   extensions?: CatalogExtension[];
   /** Proxy endpoint the generation loop calls. @default '/api/claude' */
@@ -34,16 +37,6 @@ export interface GenerativeUIChatProps {
   onStateChange?: (state: Record<string, unknown>) => void;
   onEvent?: (name: string, payload?: Record<string, unknown>) => void;
   onError?: (error: Error) => void;
-}
-
-function EmptyCanvasHint() {
-  return (
-    <Stack alignItems="center" justifyContent="center" sx={{ height: '100%', textAlign: 'center', p: 4 }}>
-      <Typography variant="body1" color="text.secondary">
-        Ask the chat to build something from your live data.
-      </Typography>
-    </Stack>
-  );
 }
 
 function isTextPart(part: { type: string }): part is { type: 'text'; text: string } {
@@ -58,55 +51,42 @@ function isTextPart(part: { type: string }): part is { type: 'text'; text: strin
  * errors.
  */
 export function GenerativeUIChat(props: GenerativeUIChatProps) {
-  const { data, dataDescription, stateStore, extensions, endpoint = '/api/claude', debug = true, onSpecChange, onStateChange, onEvent, onError } = props;
+  const { data, dataDescription, stateStore, extensions, endpoint = '/api/claude', debug = true, initialSpec, onSpecChange, onStateChange, onEvent, onError } = props;
 
-  // 1. Store: caller's or default jotai; stable for component lifetime.
-  const storeRef = useRef<StateStore | undefined>(undefined);
-  if (!storeRef.current) storeRef.current = stateStore ?? createJotaiStore({ data });
-  const store = storeRef.current;
-
-  // 2. Live data injection: prop change -> store write (new reference required by StateStore contract).
-  useEffect(() => {
-    store.set('/data', data);
-  }, [store, data]);
-
-  // 3. onStateChange subscription.
-  useEffect(() => {
-    if (!onStateChange) return undefined;
-    return store.subscribe(() => onStateChange(store.getSnapshot()));
-  }, [store, onStateChange]);
-
-  // 4. Runtime: catalog+registry+handlers, memoized on extensions. onEvent via ref so identity is stable.
-  const onEventRef = useRef(onEvent);
-  onEventRef.current = onEvent;
-  const allExtensions = useMemo(() => [...financeExtensions, ...(extensions ?? [])], [extensions]);
-  const runtime = useMemo(
-    () => buildRuntime({ extensions: allExtensions, emit: (name, payload) => onEventRef.current?.(name, payload) }),
-    [allExtensions],
-  );
+  // 1-4. Store (pinned, live /data injection), catalog runtime, strict
+  // validator, and store-bound action handlers — shared with the headless
+  // GenerativeUICanvas via useCanvasRuntime.
+  const { store, runtime, validate, actionHandlers } = useCanvasRuntime({ data, stateStore, extensions, onEvent, onStateChange });
+  const storeRef = useRef(store);
+  storeRef.current = store;
   const runtimeRef = useRef(runtime);
   runtimeRef.current = runtime;
-
-  // Strict per-component validator for the same extension set the runtime was built with.
-  const validate = useMemo(() => createStrictValidator(runtime.catalog, mergedDefinitions(allExtensions)), [runtime, allExtensions]);
   const validateRef = useRef(validate);
   validateRef.current = validate;
-
-  // Action handlers (defineRegistry's factory) bound to the live store.
-  const actionHandlers = useMemo(
-    () =>
-      runtime.handlers(
-        () => (updater) => store.update(updater(store.getSnapshot())),
-        () => store.getSnapshot(),
-      ),
-    [runtime, store],
-  );
 
   // 5. Spec + history (text transcript only).
   const [spec, setSpec] = useState<object | null>(null);
   const specRef = useRef(spec);
   specRef.current = spec;
   const historyRef = useRef<ChatTurn[]>([]);
+
+  // Restore a persisted spec (mount only): same normalize + strict-validate
+  // path as a generated spec, so a stale or hand-edited stored spec cannot
+  // crash the renderer — it fails loudly through onError instead.
+  const initialSpecAppliedRef = useRef(false);
+  useEffect(() => {
+    if (initialSpecAppliedRef.current) return;
+    initialSpecAppliedRef.current = true;
+    if (!initialSpec) return;
+    const normalized = normalizeSpec(initialSpec) as object;
+    const result = validateRef.current(normalized);
+    if (result.success) {
+      setSpec(normalized);
+    } else {
+      onErrorRef.current?.(new Error(`initialSpec failed validation: ${result.errors.join('; ')}`));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only restore by design
+  }, []);
 
   const endpointRef = useRef(endpoint);
   endpointRef.current = endpoint;
@@ -175,38 +155,20 @@ export function GenerativeUIChat(props: GenerativeUIChatProps) {
     [],
   );
 
-  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [turns, setTurns] = useState<TurnLogEntry[]>([]);
 
   // 7. Layout: canvas (flex 1) + optional inspector + chat panel (fixed 380px).
   return (
     <Stack direction="row" sx={{ height: '100%', minHeight: 480 }}>
-      <Box sx={{ flex: 1, overflow: 'auto', p: 2, position: 'relative' }}>
-        {debug ? (
-          <Tooltip title="Inspect generated spec & live state">
-            <IconButton
-              size="small"
-              aria-label="open inspector"
-              onClick={() => setInspectorOpen((open) => !open)}
-              sx={{ position: 'absolute', top: 6, right: 6, zIndex: 2, color: inspectorOpen ? 'primary.main' : 'text.secondary' }}
-            >
-              <DataObjectIcon sx={{ fontSize: 18 }} />
-            </IconButton>
-          </Tooltip>
-        ) : null}
-        <CanvasErrorBoundary onError={onError} resetKey={spec}>
-          <JSONUIProvider registry={runtime.registry} store={store} handlers={actionHandlers} functions={runtime.functions}>
-            <Suspense fallback={<CircularProgress />}>
-              {spec ? <Renderer spec={spec as never} registry={runtime.registry} /> : <EmptyCanvasHint />}
-            </Suspense>
-          </JSONUIProvider>
-        </CanvasErrorBoundary>
-      </Box>
-      {debug && inspectorOpen ? (
-        <Box sx={{ width: 360, flexShrink: 0, minWidth: 0 }}>
-          <DebugPanel spec={spec} store={store} functions={runtime.functions} turns={turns} onClose={() => setInspectorOpen(false)} />
-        </Box>
-      ) : null}
+      <CanvasView
+        spec={spec}
+        runtime={runtime}
+        store={store}
+        actionHandlers={actionHandlers}
+        debug={debug}
+        turns={turns}
+        onError={onError}
+      />
       <Box sx={{ width: 380, borderLeft: '1px solid', borderColor: 'divider' }}>
         <ChatBox
           adapter={adapter}

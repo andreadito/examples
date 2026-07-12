@@ -1,0 +1,73 @@
+{
+  "type": "object",
+  "properties": {
+    "root": {
+      "type": "string"
+    },
+    "elements": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "Stack",
+              "Box",
+              "Card",
+              "Divider",
+              "Typography",
+              "Chip",
+              "Alert",
+              "LinearProgress",
+              "StatTile",
+              "DataList",
+              "TickerTape",
+              "QuoteBoard",
+              "OrderBook",
+              "NewsFeed",
+              "Tabs",
+              "Select",
+              "Slider",
+              "ToggleButtonGroup",
+              "TextField",
+              "Switch",
+              "Button",
+              "LineChart",
+              "BarChart",
+              "PieChart",
+              "Sparkline",
+              "DataGrid",
+              "AdvancedGrid",
+              "CandlestickChart",
+              "Heatmap",
+              "Treemap"
+            ]
+          },
+          "props": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "visible": {}
+        },
+        "required": [
+          "type",
+          "props",
+          "children",
+          "visible"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "root",
+    "elements"
+  ],
+  "additionalProperties": false
+}

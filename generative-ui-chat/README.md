@@ -17,6 +17,12 @@ credit) with live positions, OHLC history, order-book depth, and a news feed
 full props reference, catalog extension, theming, and troubleshooting.
 `npm run build:lib` produces a publish-ready package in `dist-lib/`.
 
+The LLM is optional: `GenerativeUICanvas` renders any catalog-conformant
+spec (hand-written, stored, or produced by an external system) with the
+same validation and live bindings, and `createAuthoringContext` /
+`createSpecValidator` export the catalog contract so specs can be authored
+and checked anywhere — see the guide's "No LLM required" section.
+
 ## What it looks like in use
 
 1. Your app passes live data into `<GenerativeUIChat data={...} />`.
@@ -131,6 +137,7 @@ import { GenerativeUIChat } from './src/generative-ui';
 | `data`            | `Record<string, unknown>`                                 | —                    | Live data; written to state under `/data` on every change (new reference required). |
 | `dataDescription` | `string?`                                                  | —                    | Prose hint prepended to the auto-generated data description sent to Claude. |
 | `stateStore`      | `StateStore?`                                              | fresh `createJotaiStore` | Caller-owned state store, e.g. `createXStateStore(...)`.                    |
+| `initialSpec`     | `object \| null?`                                          | —                    | A spec previously captured via `onSpecChange`, rendered (after validation) on mount and used as the base for follow-up edit prompts. |
 | `extensions`      | `CatalogExtension[]?`                                      | `[]`                 | Extra catalog components. `financeExtensions` are always included regardless of this prop. |
 | `endpoint`        | `string?`                                                  | `'/api/claude'`      | Proxy endpoint the generation loop calls.                                   |
 | `onSpecChange`    | `(spec: object \| null) => void`                            | —                    | Called whenever a new/updated spec renders.                                  |

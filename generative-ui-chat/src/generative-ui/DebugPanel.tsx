@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Box, Chip, IconButton, Tab, Tabs, TextField, Tooltip, Typography } from '@mui/material';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Box, Chip, FormControlLabel, IconButton, Switch, Tab, Tabs, TextField, Tooltip, Typography } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CloseIcon from '@mui/icons-material/Close';
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import type { StateStore } from './state/types';
-import { extractBindings, preview, resolveBinding, searchPaths } from './debugUtils';
-import type { BindingRow } from './debugUtils';
+import { getStoreMeta } from './state/storeMeta';
+import { diffSnapshots, extractBindings, preview, resolveBinding, searchPaths } from './debugUtils';
+import type { BindingRow, StateChange } from './debugUtils';
 import { JsonTree } from './JsonTree';
 
 const MONO = "ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, Consolas, monospace";
@@ -28,7 +30,14 @@ export interface DebugPanelProps {
   onClose: () => void;
 }
 
-type TabKey = 'elements' | 'bindings' | 'state' | 'spec' | 'turns';
+type TabKey = 'elements' | 'bindings' | 'state' | 'store' | 'spec' | 'turns';
+
+/** One recorded state mutation (a batch of leaf changes from a single store notification). */
+export interface MutationLogEntry extends StateChange {
+  at: number;
+}
+
+const MUTATION_LOG_CAP = 200;
 
 const mono = (size = '0.6875rem') => ({ fontFamily: MONO, fontSize: size });
 
@@ -163,6 +172,89 @@ function StateTab({ store, tick }: { store: StateStore; tick: number }) {
   );
 }
 
+function StoreTab({
+  store,
+  mutations,
+  onClear,
+}: {
+  store: StateStore;
+  mutations: MutationLogEntry[];
+  onClear: () => void;
+}) {
+  const meta = getStoreMeta(store);
+  const [muteData, setMuteData] = useState(true);
+  const [showInitial, setShowInitial] = useState(false);
+  const visible = muteData ? mutations.filter((m) => !m.path.startsWith('/data')) : mutations;
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+        <Chip label={meta?.engine ?? 'custom'} size="small" color="primary" variant="outlined" sx={{ fontFamily: MONO }} />
+        <Box
+          onClick={() => setShowInitial((v) => !v)}
+          sx={{ ...mono(), color: 'text.secondary', cursor: 'pointer', '&:hover': { color: 'text.primary' } }}
+        >
+          initial state {showInitial ? '▾' : '▸'}
+        </Box>
+        <Box sx={{ flex: 1 }} />
+        <FormControlLabel
+          control={
+            <Switch
+              size="small"
+              checked={muteData}
+              onChange={(e) => setMuteData(e.target.checked)}
+              slotProps={{ input: { 'aria-label': 'mute /data' } }}
+            />
+          }
+          label={<Box sx={mono('0.625rem')}>mute /data</Box>}
+          sx={{ mr: 0 }}
+        />
+        <Tooltip title="Clear mutation log">
+          <IconButton size="small" onClick={onClear} aria-label="clear mutations">
+            <DeleteSweepIcon sx={{ fontSize: 15 }} />
+          </IconButton>
+        </Tooltip>
+      </Box>
+      {showInitial ? (
+        <Box sx={{ borderBottom: '1px solid', borderColor: 'divider', maxHeight: 140, overflow: 'auto', p: 0.5 }}>
+          {meta ? (
+            <JsonTree value={meta.initialState} defaultDepth={2} />
+          ) : (
+            <Hint text="Caller-provided store — engine and initial state unknown to the inspector (build it with createStateStore/createJotaiStore/createXStateStore to tag it)." />
+          )}
+        </Box>
+      ) : null}
+      <Box sx={{ overflow: 'auto', flex: 1, minHeight: 0 }}>
+        {visible.length === 0 ? (
+          <Hint
+            text={
+              mutations.length > 0
+                ? 'Only /data ticks so far — unmute to see them.'
+                : 'No mutations yet — interact with the UI (or wait for a data tick) and every state write lands here: path, old value, new value.'
+            }
+          />
+        ) : (
+          visible.map((m, i) => (
+            <Box key={`${m.at}-${m.path}-${i}`} sx={{ px: 1, py: '2px', borderBottom: '1px solid', borderColor: 'divider' }}>
+              <Box sx={{ ...mono(), whiteSpace: 'nowrap' }}>
+                <Box component="span" sx={{ color: 'text.secondary' }}>
+                  {new Date(m.at).toLocaleTimeString()}
+                </Box>{' '}
+                <Box component="span" sx={{ color: 'primary.main' }}>{m.path}</Box>
+              </Box>
+              <Box sx={{ ...mono('0.625rem'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <Box component="span" sx={{ color: 'error.main' }}>{preview(m.from, 40)}</Box>
+                <Box component="span" sx={{ color: 'text.secondary' }}> → </Box>
+                <Box component="span" sx={{ color: 'success.main' }}>{preview(m.to, 40)}</Box>
+              </Box>
+            </Box>
+          ))
+        )}
+      </Box>
+    </Box>
+  );
+}
+
 function TurnsTab({ turns }: { turns: TurnLogEntry[] }) {
   if (turns.length === 0) return <Hint text="No generations this session yet." />;
   const dot = (outcome: TurnLogEntry['outcome']) =>
@@ -216,10 +308,34 @@ export function DebugPanel({ spec, store, functions, turns, onClose }: DebugPane
     return () => clearInterval(id);
   }, [tab]);
 
+  // Mutation log: recorded for the panel's whole lifetime (not just while
+  // the STORE tab is visible), so opening the tab shows history, and it
+  // reads like an event/transition log whichever engine backs the store.
+  const [mutations, setMutations] = useState<MutationLogEntry[]>([]);
+  const prevSnapshotRef = useRef<Record<string, unknown> | null>(null);
+  useEffect(() => {
+    prevSnapshotRef.current = store.getSnapshot();
+    return store.subscribe(() => {
+      const next = store.getSnapshot();
+      const changes = diffSnapshots(prevSnapshotRef.current, next);
+      prevSnapshotRef.current = next;
+      if (changes.length === 0) return;
+      const at = Date.now();
+      setMutations((prev) => [...changes.map((c) => ({ at, ...c })), ...prev].slice(0, MUTATION_LOG_CAP));
+    });
+  }, [store]);
+
   const bindings = useMemo(() => extractBindings(spec), [spec]);
 
   const copy = () => {
-    const value = tab === 'state' ? store.getSnapshot() : tab === 'turns' ? turns : spec;
+    const value =
+      tab === 'state'
+        ? store.getSnapshot()
+        : tab === 'store'
+          ? { engine: getStoreMeta(store)?.engine ?? 'custom', initialState: getStoreMeta(store)?.initialState, mutations }
+          : tab === 'turns'
+            ? turns
+            : spec;
     try {
       void navigator.clipboard?.writeText(JSON.stringify(value, null, 2));
     } catch {
@@ -244,6 +360,7 @@ export function DebugPanel({ spec, store, functions, turns, onClose }: DebugPane
           <Tab value="elements" label="Elements" />
           <Tab value="bindings" label={`Bindings${bindings.length ? ` (${bindings.length})` : ''}`} />
           <Tab value="state" label="State" />
+          <Tab value="store" label="Store" />
           <Tab value="spec" label="Spec" />
           <Tab value="turns" label={`Turns${turns.length ? ` (${turns.length})` : ''}`} />
         </Tabs>
@@ -261,6 +378,7 @@ export function DebugPanel({ spec, store, functions, turns, onClose }: DebugPane
       {tab === 'elements' ? <ElementsTab spec={spec} bindings={bindings} /> : null}
       {tab === 'bindings' ? <BindingsTab bindings={bindings} store={store} functions={functions} tick={tick} /> : null}
       {tab === 'state' ? <StateTab store={store} tick={tick} /> : null}
+      {tab === 'store' ? <StoreTab store={store} mutations={mutations} onClear={() => setMutations([])} /> : null}
       {tab === 'spec' ? (spec ? <JsonTree value={spec} defaultDepth={2} /> : <Hint text="Nothing generated yet — the spec appears here after the first build." />) : null}
       {tab === 'turns' ? <TurnsTab turns={turns} /> : null}
     </Box>
