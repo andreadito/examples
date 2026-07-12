@@ -16,7 +16,12 @@ export function formatValue(value: unknown, format?: string | null): string {
       const n = Number(value);
       return Number.isFinite(n) ? numberFormatter.format(n) : String(value ?? '');
     }
-    case 'delta':
+    case 'delta': {
+      // Signed, rounded — raw floats (13980.8115362…) read as noise in grids.
+      const n = Number(value);
+      if (!Number.isFinite(n)) return String(value ?? '');
+      return `${n >= 0 ? '+' : ''}${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(n)}`;
+    }
     case 'raw':
     default:
       return String(value ?? '');

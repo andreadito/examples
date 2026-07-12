@@ -67,4 +67,22 @@ describe('transforms', () => {
     const sorted = transformFunctions.sortBy({ data: rows, field: 'pnl', dir: 'DESCENDING' }) as Array<{ pnl: number }>;
     expect(sorted[0].pnl).toBe(-50); // falls back to asc
   });
+
+  it('wrappers accept model-paraphrased arg aliases (observed live)', () => {
+    // aggregateBy called with {key, value} instead of {by, field}
+    expect(transformFunctions.aggregateBy({ data: rows, key: 'sector', value: 'pnl' })).toEqual([
+      { key: 'Tech', value: 50 },
+      { key: 'Energy', value: 30 },
+    ]);
+    // sortBy called with {key} instead of {field}
+    const sorted = transformFunctions.sortBy({ data: rows, key: 'pnl', dir: 'desc' }) as Array<{ pnl: number }>;
+    expect(sorted[0].pnl).toBe(100);
+    // topN with {limit} instead of {n}
+    expect((transformFunctions.topN({ data: rows, field: 'pnl', limit: 1 }) as unknown[])).toHaveLength(1);
+    // canonical names still win when both present
+    expect(transformFunctions.aggregateBy({ data: rows, by: 'sector', key: 'symbol', field: 'pnl' })).toEqual([
+      { key: 'Tech', value: 50 },
+      { key: 'Energy', value: 30 },
+    ]);
+  });
 });

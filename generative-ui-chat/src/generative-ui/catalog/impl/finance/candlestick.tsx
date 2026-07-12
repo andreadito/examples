@@ -9,8 +9,16 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
+// Epoch-ms timestamps (anything past 2001 in ms) render as HH:MM:SS; other
+// time values (ISO strings, labels) pass through untouched.
+const timeLabel = (v: unknown): string => {
+  const n = Number(v);
+  if (Number.isFinite(n) && n > 1e12) return new Date(n).toLocaleTimeString();
+  return String(v ?? '');
+};
+
 function buildOption(rows: OhlcRow[], showVolume: boolean): EChartsOption {
-  const times = rows.map((r) => String(r.time ?? ''));
+  const times = rows.map((r) => timeLabel(r.time));
   // ECharts candlestick series data order is [open, close, low, high].
   const candles = rows.map((r) => [num(r.open), num(r.close), num(r.low), num(r.high)]);
   const volumes = rows.map((r) => ({

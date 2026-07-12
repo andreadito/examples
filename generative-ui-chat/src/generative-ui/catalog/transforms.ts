@@ -70,18 +70,51 @@ const asAggOp = (v: unknown): AggOp => (AGG_OPS.includes(v as AggOp) ? (v as Agg
 const asFilterOp = (v: unknown): FilterOp => (FILTER_OPS.includes(v as FilterOp) ? (v as FilterOp) : 'eq');
 const asDir = (v: unknown): 'asc' | 'desc' => (v === 'desc' ? 'desc' : 'asc');
 
+// Models paraphrase arg names despite the documented canon (observed live:
+// aggregateBy called with {key, value} instead of {by, field}). Resolve through
+// alias chains so a near-miss degrades to the intended call, not a silent no-op.
+const arg = (a: Args, ...names: string[]): unknown => {
+  for (const n of names) {
+    if (a[n] !== undefined && a[n] !== null) return a[n];
+  }
+  return undefined;
+};
+
 export const transformFunctions: Record<string, (args: Args) => unknown> = {
-  aggregateBy: (a) => aggregateBy(asRows(a.data), String(a.by ?? ''), String(a.field ?? ''), asAggOp(a.op)),
-  sortBy: (a) => sortRows(asRows(a.data), String(a.field ?? ''), asDir(a.dir)),
-  filterBy: (a) => filterRows(asRows(a.data), String(a.field ?? ''), asFilterOp(a.op), a.value),
-  topN: (a) => topN(asRows(a.data), String(a.field ?? ''), num(a.n ?? 5), a.dir === 'asc' ? 'asc' : 'desc'),
-  pctChange: (a) => withPctChange(asRows(a.data), String(a.field ?? '')),
+  aggregateBy: (a) =>
+    aggregateBy(
+      asRows(a.data),
+      String(arg(a, 'by', 'key', 'groupBy', 'group') ?? ''),
+      String(arg(a, 'field', 'value', 'metric') ?? ''),
+      asAggOp(a.op),
+    ),
+  sortBy: (a) => sortRows(asRows(a.data), String(arg(a, 'field', 'key', 'by') ?? ''), asDir(arg(a, 'dir', 'order'))),
+  filterBy: (a) =>
+    filterRows(asRows(a.data), String(arg(a, 'field', 'key', 'by') ?? ''), asFilterOp(a.op), arg(a, 'value', 'eq')),
+  topN: (a) =>
+    topN(asRows(a.data), String(arg(a, 'field', 'key', 'by') ?? ''), num(arg(a, 'n', 'count', 'limit') ?? 5), a.dir === 'asc' ? 'asc' : 'desc'),
+  pctChange: (a) => withPctChange(asRows(a.data), String(arg(a, 'field', 'key') ?? '')),
 };
 
 export const transformDeclarations: Record<string, { description: string }> = {
-  aggregateBy: { description: 'Group rows and aggregate. args: data (array expression), by (group field), field (numeric field), op (sum|avg|min|max|count). Returns [{key, value}].' },
-  sortBy: { description: 'Sort rows. args: data (array expression), field, dir (asc|desc). Returns sorted array.' },
-  filterBy: { description: 'Filter rows. args: data (array expression), field, op (eq|neq|gt|lt|contains), value. Returns filtered array.' },
-  topN: { description: 'Largest/smallest N rows. args: data (array expression), field (numeric), n, dir (asc|desc). Returns array.' },
-  pctChange: { description: 'Adds a pct field = percent change of `field` vs previous row. args: data (array expression), field. Returns array.' },
+  aggregateBy: {
+    description:
+      'Group rows and aggregate. Returns [{key, value}]. Example: {"$computed":"aggregateBy","args":{"data":{"$state":"/data/positions"},"by":"sector","field":"pnl","op":"sum"}} (op: sum|avg|min|max|count). Chart it with xKey "key" and yKeys ["value"].',
+  },
+  sortBy: {
+    description:
+      'Sort rows. Example: {"$computed":"sortBy","args":{"data":{"$state":"/data/positions"},"field":"pnlPct","dir":"desc"}}.',
+  },
+  filterBy: {
+    description:
+      'Filter rows. Example: {"$computed":"filterBy","args":{"data":{"$state":"/data/positions"},"field":"sector","op":"eq","value":"Tech"}} (op: eq|neq|gt|lt|contains).',
+  },
+  topN: {
+    description:
+      'Largest/smallest N rows by a numeric field. Example: {"$computed":"topN","args":{"data":{"$state":"/data/positions"},"field":"pnl","n":5,"dir":"desc"}}.',
+  },
+  pctChange: {
+    description:
+      'Adds a pct field = percent change of `field` vs previous row. Example: {"$computed":"pctChange","args":{"data":{"$state":"/data/ohlc/AAPL"},"field":"close"}}.',
+  },
 };

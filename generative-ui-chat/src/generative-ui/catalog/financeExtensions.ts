@@ -37,7 +37,9 @@ const advancedGrid = defineCatalogComponent({
           field: z.string(),
           headerName: z.string().nullable(),
           format: z.enum(['currency', 'percent', 'number', 'delta', 'raw']).nullable(),
-          pinned: z.enum(['left', 'right']).nullable(),
+          // Models trained on AG Grid emit booleans here (its real API allows
+          // boolean | 'left' | 'right'); accept that dialect, mapped in the impl.
+          pinned: z.union([z.enum(['left', 'right']), z.boolean()]).nullable(),
           width: z.number().nullable(),
         }),
       ),
@@ -85,10 +87,12 @@ const treemap = defineCatalogComponent({
   definition: {
     props: z.object({
       data: rows,
+      nameKey: z.string().nullable(),
+      valueKey: z.string().nullable(),
       height: z.number().nullable(),
     }),
     description:
-      'Single-level treemap of relative sizes (e.g. portfolio allocation, market cap by holding). Data rows need `name` and `value`.',
+      'Single-level treemap of relative sizes (e.g. portfolio allocation by holding). Set nameKey/valueKey to pick fields from the rows (e.g. nameKey "symbol", valueKey "pnl"); tile size uses the absolute value.',
   },
   component: TreemapComponent,
 });

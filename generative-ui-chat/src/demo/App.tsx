@@ -85,9 +85,11 @@ export function App() {
             <GenerativeUIChat
               data={data}
               dataDescription="Live trading positions (refreshed every second) and per-symbol OHLC history"
-              onSpecChange={(s) =>
-                log('onSpecChange', { elements: s ? Object.keys((s as { elements: object }).elements).length : 0 })
-              }
+              onSpecChange={(s) => {
+                // Full spec at debug level — invaluable when a generated UI misbehaves.
+                console.debug('[demo] spec', JSON.stringify(s));
+                log('onSpecChange', { elements: s ? Object.keys((s as { elements: object }).elements).length : 0 });
+              }}
               onStateChange={() => log('onStateChange')}
               onEvent={(name, payload) => log(`onEvent:${name}`, payload)}
               onError={(e) => log('onError', { message: e.message })}

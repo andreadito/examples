@@ -15,7 +15,7 @@ type ColumnSpec = {
   field: string;
   headerName?: string | null;
   format?: string | null;
-  pinned?: 'left' | 'right' | null;
+  pinned?: 'left' | 'right' | boolean | null;
   width?: number | null;
 };
 
@@ -29,7 +29,8 @@ export function AdvancedGridImpl({ props }: JsonRenderComponentProps) {
     field: col.field,
     headerName: col.headerName ?? col.field,
     width: col.width ?? undefined,
-    pinned: col.pinned ?? undefined,
+    // Boolean dialect from AG-Grid-trained models: true pins left, false unpins.
+    pinned: col.pinned === true ? 'left' : col.pinned === false ? undefined : col.pinned ?? undefined,
     sortable: true,
     filter: filterable,
     valueFormatter: (params) => formatValue(params.value, col.format ?? null),
