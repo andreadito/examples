@@ -1,4 +1,5 @@
-import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
+import { ModuleRegistry, AllCommunityModule, colorSchemeDark, themeQuartz } from 'ag-grid-community';
+import { useTheme } from '@mui/material/styles';
 import type { ColDef } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
 import type { JsonRenderComponentProps } from '../../extension';
@@ -15,11 +16,14 @@ type ColumnSpec = {
   field: string;
   headerName?: string | null;
   format?: string | null;
-  pinned?: 'left' | 'right' | boolean | null;
+  pinned?: string | boolean | null;
   width?: number | null;
 };
 
+const darkTheme = themeQuartz.withPart(colorSchemeDark);
+
 export function AdvancedGridImpl({ props }: JsonRenderComponentProps) {
+  const { palette } = useTheme();
   const rows = Array.isArray(props.data) ? (props.data as Row[]) : [];
   const columnSpecs = Array.isArray(props.columns) ? (props.columns as ColumnSpec[]) : [];
   const filterable = !!props.filterable;
@@ -29,8 +33,14 @@ export function AdvancedGridImpl({ props }: JsonRenderComponentProps) {
     field: col.field,
     headerName: col.headerName ?? col.field,
     width: col.width ?? undefined,
-    // Boolean dialect from AG-Grid-trained models: true pins left, false unpins.
-    pinned: col.pinned === true ? 'left' : col.pinned === false ? undefined : col.pinned ?? undefined,
+    // Only 'left'/'right'/true pin (true pins left); every other dialect
+    // ('none', false, 'false', ...) means unpinned.
+    pinned:
+      col.pinned === true || col.pinned === 'true'
+        ? 'left'
+        : col.pinned === 'left' || col.pinned === 'right'
+          ? col.pinned
+          : undefined,
     sortable: true,
     filter: filterable,
     valueFormatter: (params) => formatValue(params.value, col.format ?? null),
@@ -39,7 +49,7 @@ export function AdvancedGridImpl({ props }: JsonRenderComponentProps) {
           cellStyle: (params) => {
             const n = Number(params.value);
             if (!Number.isFinite(n)) return null;
-            return { color: n >= 0 ? '#2e7d32' : '#d32f2f' };
+            return { color: n >= 0 ? palette.success.main : palette.error.main };
           },
         }
       : {}),
@@ -47,7 +57,7 @@ export function AdvancedGridImpl({ props }: JsonRenderComponentProps) {
 
   return (
     <div style={{ height, width: '100%' }}>
-      <AgGridReact theme={themeQuartz} rowData={rows} columnDefs={columnDefs} />
+      <AgGridReact theme={palette.mode === 'dark' ? darkTheme : themeQuartz} rowData={rows} columnDefs={columnDefs} />
     </div>
   );
 }

@@ -145,7 +145,16 @@ export function createStrictValidator(
         const result = fieldSchema.safeParse(value);
         if (!result.success) {
           const prefix = `elements.${elementId}.props.${key}`;
-          errors.push(...issuesToStrings(result.error, prefix));
+          // Include what was actually sent — the repair model can't fix what
+          // it can't see, and neither can a developer reading the error.
+          let got = '';
+          try {
+            const json = JSON.stringify(value);
+            got = json ? ` (got ${json.length <= 300 ? json : `${json.slice(0, 300)}…`})` : '';
+          } catch {
+            /* unserializable — omit */
+          }
+          errors.push(...issuesToStrings(result.error, prefix).map((e) => `${e}${got}`));
         }
       }
     }

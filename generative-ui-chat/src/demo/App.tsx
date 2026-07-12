@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   AppBar,
   Box,
   CssBaseline,
+  IconButton,
   Table,
   TableBody,
   TableCell,
@@ -11,13 +12,13 @@ import {
   ThemeProvider,
   Toolbar,
   Typography,
-  createTheme,
 } from '@mui/material';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import LightModeIcon from '@mui/icons-material/LightMode';
 import { GenerativeUIChat } from '../generative-ui';
 import { useTicker } from './useTicker';
 import { useCallbackLog, CallbackLog } from './CallbackLog';
-
-const theme = createTheme();
+import { createTradingTheme } from './theme';
 
 const APP_BAR_HEIGHT = 64;
 const LOG_HEIGHT = 160;
@@ -58,6 +59,8 @@ function PositionsTable({ positions }: { positions: ReturnType<typeof useTicker>
 export function App() {
   const { positions, ohlc, asOf } = useTicker(1000);
   const { entries, log } = useCallbackLog();
+  const [mode, setMode] = useState<'light' | 'dark'>('dark');
+  const theme = useMemo(() => createTradingTheme(mode), [mode]);
 
   const data = useMemo(
     () => ({ positions, ohlc, asOf, totalPnl: positions.reduce((sum, p) => sum + p.pnl, 0) }),
@@ -70,9 +73,16 @@ export function App() {
       <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
         <AppBar position="static" sx={{ height: APP_BAR_HEIGHT, justifyContent: 'center' }}>
           <Toolbar variant="dense">
-            <Typography variant="h6" component="div">
+            <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
               Trading Desk — Generative UI demo
             </Typography>
+            <IconButton
+              color="inherit"
+              aria-label="toggle color scheme"
+              onClick={() => setMode((m) => (m === 'dark' ? 'light' : 'dark'))}
+            >
+              {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+            </IconButton>
           </Toolbar>
         </AppBar>
 

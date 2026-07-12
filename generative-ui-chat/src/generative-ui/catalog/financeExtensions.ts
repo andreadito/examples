@@ -32,15 +32,18 @@ const advancedGrid = defineCatalogComponent({
   definition: {
     props: z.object({
       data: rows,
+      // .nullish() on nested fields: models omit keys they don't need, and
+      // json-render's .nullable() convention would treat that as an error.
       columns: z.array(
         z.object({
           field: z.string(),
-          headerName: z.string().nullable(),
-          format: z.enum(['currency', 'percent', 'number', 'delta', 'raw']).nullable(),
-          // Models trained on AG Grid emit booleans here (its real API allows
-          // boolean | 'left' | 'right'); accept that dialect, mapped in the impl.
-          pinned: z.union([z.enum(['left', 'right']), z.boolean()]).nullable(),
-          width: z.number().nullable(),
+          headerName: z.string().nullish(),
+          format: z.enum(['currency', 'percent', 'number', 'delta', 'raw', 'text', 'string', 'price', 'money', 'usd', 'pct', 'int', 'integer']).nullish(),
+          // Models emit many pinning dialects ('left', booleans, 'none',
+          // string 'false'); accept any string/boolean — the impl honors
+          // 'left'/'right'/true and ignores the rest.
+          pinned: z.union([z.boolean(), z.string()]).nullish(),
+          width: z.number().nullish(),
         }),
       ),
       height: z.number().nullable(),

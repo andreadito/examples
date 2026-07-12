@@ -104,6 +104,18 @@ export const coreDefinitions = {
     }),
     description: 'Compact list of rows: primary text, optional secondary, optional right-aligned value.',
   },
+  TickerTape: {
+    props: z.object({
+      data: rows,
+      labelKey: z.string(),
+      valueKey: z.string(),
+      changeKey: z.string().nullable(),
+      changeFormat: z.enum(['percent', 'number']).nullable(),
+      speed: z.enum(['slow', 'normal', 'fast']).nullable(),
+    }),
+    description:
+      'NYSE-style continuously scrolling ticker-tape banner. Cycles through rows showing label, currency value, and signed change (green up / red down arrows); pauses on hover. Place full-width at the very top of a dashboard. Example: data /data/positions, labelKey "symbol", valueKey "lastPrice", changeKey "pnlPct", changeFormat "percent".',
+  },
   Tabs: {
     props: z.object({ value: z.string(), labels: z.array(z.string()) }),
     slots: ['default'],
@@ -152,11 +164,21 @@ export const coreDefinitions = {
   DataGrid: {
     props: z.object({
       data: rows,
+      // Nested object fields use .nullish(), not .nullable(): json-render's
+      // .nullable() convention makes the KEY required (observed live: models
+      // omit format/pinned on columns they don't need, which is reasonable
+      // and must not fail the generation).
       columns: z.array(z.object({
         field: z.string(),
-        headerName: z.string().nullable(),
-        format: z.enum(['currency', 'percent', 'number', 'delta', 'raw']).nullable(),
-        width: z.number().nullable(),
+        headerName: z.string().nullish(),
+        // Canonical formats plus the paraphrases models emit (normalized at render).
+        format: z.enum(['currency', 'percent', 'number', 'delta', 'raw', 'text', 'string', 'price', 'money', 'usd', 'pct', 'int', 'integer']).nullish(),
+        // Accepted-and-ignored: models carry pinned over from AG Grid habits
+        // (observed dialects: 'left', booleans, 'none', string 'false').
+        // MUI X DataGrid (community) cannot pin; a cosmetic prop must never
+        // fail a whole generation, so accept any string/boolean.
+        pinned: z.union([z.boolean(), z.string()]).nullish(),
+        width: z.number().nullish(),
       })),
       height: z.number().nullable(),
       density: z.enum(['compact', 'standard']).nullable(),

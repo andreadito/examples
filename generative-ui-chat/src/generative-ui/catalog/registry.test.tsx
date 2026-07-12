@@ -82,9 +82,47 @@ describe('registry smoke test', () => {
     expect(screen.getByText('from state')).toBeInTheDocument();
   });
 
+
+  it('renders a TickerTape with change coloring and validates', () => {
+    const { catalog, registry } = buildRuntime({ emit: vi.fn() });
+    const spec = {
+      root: 'tape-1',
+      elements: {
+        'tape-1': {
+          type: 'TickerTape',
+          props: {
+            data: [
+              { symbol: 'AAPL', lastPrice: 190.5, pnlPct: 2.4 },
+              { symbol: 'GS', lastPrice: 470.1, pnlPct: -1.2 },
+            ],
+            labelKey: 'symbol',
+            valueKey: 'lastPrice',
+            changeKey: 'pnlPct',
+            changeFormat: 'percent',
+            speed: 'normal',
+          },
+          visible: true,
+          children: [],
+        },
+      },
+    };
+    expect(catalog.validate(spec).success).toBe(true);
+    render(
+      <StateProvider initialState={{}}>
+        <VisibilityProvider>
+          <ActionProvider handlers={{}}>
+            <Renderer spec={spec as never} registry={registry} />
+          </ActionProvider>
+        </VisibilityProvider>
+      </StateProvider>,
+    );
+    expect(screen.getAllByText('AAPL').length).toBeGreaterThanOrEqual(1); // strip is duplicated for seamless loop
+    expect(screen.getAllByText(/2\.40%/).length).toBeGreaterThanOrEqual(1);
+  });
+
   it('registry has an implementation for every catalog component', () => {
     const { registry } = buildRuntime({ emit: vi.fn() });
-    for (const type of ['Stack', 'Box', 'Card', 'Divider', 'Typography', 'Chip', 'Alert', 'LinearProgress', 'StatTile', 'DataList', 'Tabs', 'Select', 'Slider', 'ToggleButtonGroup', 'TextField', 'Switch', 'Button', 'LineChart', 'BarChart', 'PieChart', 'Sparkline', 'DataGrid']) {
+    for (const type of ['Stack', 'Box', 'Card', 'Divider', 'Typography', 'Chip', 'Alert', 'LinearProgress', 'StatTile', 'DataList', 'TickerTape', 'Tabs', 'Select', 'Slider', 'ToggleButtonGroup', 'TextField', 'Switch', 'Button', 'LineChart', 'BarChart', 'PieChart', 'Sparkline', 'DataGrid']) {
       expect(registry[type], `missing registry impl for ${type}`).toBeTruthy();
     }
   });

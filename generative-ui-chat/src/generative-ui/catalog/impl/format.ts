@@ -1,9 +1,23 @@
 const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 const numberFormatter = new Intl.NumberFormat('en-US');
 
+// Models paraphrase format names (observed live: grids described with
+// text/string/price/pct). Normalize the dialect before dispatching.
+const FORMAT_ALIASES: Record<string, string> = {
+  text: 'raw',
+  string: 'raw',
+  price: 'currency',
+  money: 'currency',
+  usd: 'currency',
+  pct: 'percent',
+  int: 'number',
+  integer: 'number',
+};
+
 /** Shared value formatting used by StatTile, DataList, and DataGrid impls. */
 export function formatValue(value: unknown, format?: string | null): string {
-  switch (format) {
+  const normalized = format ? (FORMAT_ALIASES[format] ?? format) : format;
+  switch (normalized) {
     case 'currency': {
       const n = Number(value);
       return Number.isFinite(n) ? currencyFormatter.format(n) : String(value ?? '');
