@@ -29,6 +29,17 @@ import { DataSourcesDialog } from './DataSourcesDialog';
 
 const APP_BAR_HEIGHT = 44;
 const LOG_HEIGHT = 110;
+const DISABLED_DATASETS_KEY = 'generative-ui-demo/disabled-datasets';
+
+const DESK_DESCRIPTIONS: Record<string, string> = {
+  positions: 'equity positions (positions)',
+  ohlc: 'per-symbol OHLC history (ohlc)',
+  book: 'order-book depth (book)',
+  fx: 'FX desk (fx: pairs/rates/pips)',
+  rates: 'rates desk (rates: yields/bps/DV01)',
+  credit: 'credit desk (credit: CDS spreads in bps)',
+  news: 'streaming news (news)',
+};
 
 function PositionsTable({ positions }: { positions: ReturnType<typeof useTicker>['positions'] }) {
   return (
@@ -79,18 +90,29 @@ export function App() {
   // the inspector's STATE tab shows the same data. Toggle from the AppBar.
   const [feedOpen, setFeedOpen] = useState(false);
 
-  // Surface user-added sources in the prompt: without this, a vague ask
-  // ("build me something") gravitates to the richly described desk feeds
-  // and never touches data the user just plugged in.
-  const dataDescription = useMemo(() => {
-    const base =
-      'Multi-desk live trading data: equity positions (positions, with per-symbol ohlc + book depth), FX desk (fx: pairs/rates/pips), rates desk (rates: yields/bps/DV01), credit desk (credit: CDS spreads in bps), streaming news';
-    const names = sources.map((s) => s.name);
-    if (names.length === 0) return base;
-    return `${base}. The user also connected their own data sources — prefer these when relevant: ${names.join(', ')}`;
-  }, [sources]);
+  // Which datasets the user has switched off in the data panel. Persisted as
+  // the *disabled* set so newly added sources default to enabled.
+  const [disabledDatasets, setDisabledDatasets] = useState<string[]>(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(DISABLED_DATASETS_KEY) ?? '[]');
+      return Array.isArray(parsed) ? parsed.filter((n): n is string => typeof n === 'string') : [];
+    } catch {
+      return [];
+    }
+  });
+  const toggleDataset = (name: string) => {
+    setDisabledDatasets((prev) => {
+      const next = prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name];
+      try {
+        localStorage.setItem(DISABLED_DATASETS_KEY, JSON.stringify(next));
+      } catch {
+        // localStorage unavailable (private mode) — selection just won't persist.
+      }
+      return next;
+    });
+  };
 
-  const data = useMemo(
+  const allData = useMemo(
     () => ({
       positions,
       ohlc,
@@ -105,6 +127,27 @@ export function App() {
     }),
     [positions, ohlc, book, news, fx, rates, credit, asOf, customValues],
   );
+
+  // Only enabled datasets reach the component — a disabled one is absent from
+  // /data entirely, so the model can neither see nor bind to it.
+  const data = useMemo(
+    () => Object.fromEntries(Object.entries(allData).filter(([key]) => !disabledDatasets.includes(key))),
+    [allData, disabledDatasets],
+  );
+
+  // Prompt prose assembled from what is actually enabled, plus a nudge toward
+  // user-added sources: without it, a vague ask ("build me something")
+  // gravitates to the richly described desk feeds.
+  const dataDescription = useMemo(() => {
+    const enabled = (key: string) => !disabledDatasets.includes(key);
+    const parts = Object.entries(DESK_DESCRIPTIONS)
+      .filter(([key]) => enabled(key))
+      .map(([, text]) => text);
+    const base = parts.length > 0 ? `Multi-desk live trading data: ${parts.join(', ')}` : 'Live data';
+    const names = sources.map((s) => s.name).filter(enabled);
+    if (names.length === 0) return base;
+    return `${base}. The user also connected their own data sources — prefer these when relevant: ${names.join(', ')}`;
+  }, [sources, disabledDatasets]);
 
   return (
     <ThemeProvider theme={theme}>
@@ -123,8 +166,11 @@ export function App() {
             >
               <TableRowsIcon fontSize="small" />
             </IconButton>
-            <IconButton color="inherit" aria-label="custom data sources" onClick={() => setSourcesOpen(true)} sx={{ mr: 0.5 }}>
-              <Badge badgeContent={sources.length} color="primary">
+            <IconButton color="inherit" aria-label="data panel" onClick={() => setSourcesOpen(true)} sx={{ mr: 0.5 }}>
+              <Badge
+                badgeContent={disabledDatasets.length > 0 ? `${disabledDatasets.length} off` : sources.length}
+                color={disabledDatasets.length > 0 ? 'warning' : 'primary'}
+              >
                 <StorageIcon fontSize="small" />
               </Badge>
             </IconButton>
@@ -181,6 +227,9 @@ export function App() {
       <DataSourcesDialog
         open={sourcesOpen}
         onClose={() => setSourcesOpen(false)}
+        datasets={allData}
+        disabled={disabledDatasets}
+        onToggleDataset={toggleDataset}
         sources={sources}
         urlErrors={urlErrors}
         onAdd={addSource}
