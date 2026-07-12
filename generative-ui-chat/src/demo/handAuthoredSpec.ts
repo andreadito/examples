@@ -6,7 +6,8 @@
  *
  * Dialect rules a human author must follow (also in docs/INTEGRATION.md §9):
  * - every element carries `visible: true`
- * - props declared `.nullable()` need the KEY present (pass null)
+ * - optional props may be omitted or passed as null (explicit nulls here,
+ *   to document each component's full prop surface)
  * - data binds via {"$state": "/data/..."}; derived values via $computed;
  *   two-way inputs via $bindState; interactions via on.press -> emit
  */

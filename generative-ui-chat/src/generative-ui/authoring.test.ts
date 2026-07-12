@@ -16,6 +16,10 @@ describe('createAuthoringContext', () => {
     expect(ctx.dataInfo).toContain('Open orders');
     expect(ctx.dataInfo).toContain('symbol: string');
     expect(JSON.stringify(ctx.specSchema)).toContain('elements');
+    // Document dialect, not json-render's streaming JSONL/patch dialect.
+    expect(ctx.instructions).toContain('COMPLETE spec document');
+    expect(ctx.instructions).not.toContain('JSONL patches');
+    expect(ctx.instructions).not.toContain('RFC 6902');
   });
 
   it('includes host extensions in the instructions', () => {

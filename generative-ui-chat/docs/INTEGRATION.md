@@ -360,12 +360,22 @@ catalog build the canvas renders with, anything authored against them is
 guaranteed to render — there is no second source of truth to drift.
 
 Hand-authoring notes (the same dialect rules the model follows):
-- Optional props declared `.nullable()` require the **key to be present**
-  (pass `null`); every element needs `visible: true` (the validator's
-  normalize step fills it in if omitted).
+- Every element needs `visible: true` (the validator's normalize step fills
+  it in if omitted); optional props may be omitted or passed as `null`.
 - Bind data with `{ "$state": "/data/orders" }`, derive with `$computed`
   transforms, and wire interactions via `on`, e.g.
   `on: { press: { action: "emit", params: { name: "submit", payload: null } } }`.
+
+### The prebuilt skill for external LLMs
+
+`npm run build:skill` renders the authoring contract as a ready-to-install
+Agent Skill at `skill/generative-ui-spec-author/` (SKILL.md + generated
+catalog reference, spec JSON Schema, and a complete example spec). Drop the
+folder into an agent's skills directory (e.g. `.claude/skills/`) and that
+agent can author valid specs for your canvas with no integration work —
+it's also shipped inside the npm package under `skill/`. Regenerate after
+any catalog/extension change; the files are rendered from the same catalog
+build the canvas renders with.
 
 ## 10. Theming
 
